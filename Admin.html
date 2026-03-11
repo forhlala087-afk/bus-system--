@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🚌 客運調度站 - 站務後台管理系統</title>
+<style>
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f4f6f9; color: #333; margin: 0; padding: 20px; }
+    h1 { text-align: center; color: #2c3e50; margin-bottom: 30px; }
+    .container { max-width: 800px; margin: 0 auto; }
+    
+    #login-section { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-width: 400px; margin: 50px auto; text-align: center; }
+    .input-field { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+    .btn { background: #007bff; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-size: 16px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 10px; }
+    .btn:hover { background: #0056b3; }
+    .btn-danger { background: #e74c3c; } .btn-danger:hover { background: #c0392b; }
+
+    #dashboard-section { display: none; }
+    .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 20px; border-top: 5px solid #007bff; }
+    .card h2 { margin-top: 0; font-size: 20px; color: #34495e; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+    
+    .bus-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; }
+    .bus-tag { background: #e3f2fd; color: #0984e3; padding: 8px 15px; border-radius: 20px; font-weight: bold; display: flex; align-items: center; gap: 8px; }
+    .bus-tag span { cursor: pointer; color: #e74c3c; }
+
+    .setting-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+    .setting-row select, .setting-row input { padding: 8px; border-radius: 6px; border: 1px solid #ccc; }
+    
+    #toast { visibility: hidden; min-width: 250px; background-color: #333; color: #fff; text-align: center; border-radius: 8px; padding: 12px; position: fixed; z-index: 1; left: 50%; bottom: 30px; transform: translateX(-50%); }
+    #toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
+    @keyframes fadein { from { bottom: 0; opacity: 0; } to { bottom: 30px; opacity: 1; } }
+    @keyframes fadeout { from { bottom: 30px; opacity: 1; } to { bottom: 0; opacity: 0; } }
+</style>
+</head>
+<body>
+
+<div class="container">
+    <h1 id="main-title">🚌 站務後台管理系統</h1>
+
+    <div id="login-section">
+        <h2 style="margin-top:0;">調度站登入</h2>
+        <input type="text" id="station-id" class="input-field" placeholder="輸入站點代號 (例如: Station_A)">
+        <input type="password" id="station-pwd" class="input-field" placeholder="輸入站務員密碼">
+        <button class="btn" onclick="loginStation()">登入 / 建立站點</button>
+        <p style="font-size:12px; color:#888; margin-top:15px;">※ 若站點不存在，輸入密碼將自動建立新站點</p>
+    </div>
+
+    <div id="dashboard-section">
+        
+        <div class="card" style="border-top-color: #27ae60;">
+            <h2>📁 1. 派發全站路線包 (超級 JSON)</h2>
+            <p style="font-size: 14px; color: #666;">請上傳由主機匯出的 <b>Backup.json</b>，上傳後本站所有公車將自動同步這些路線。</p>
+            <input type="file" id="route-json-input" accept=".json" style="display:none" onchange="uploadRoutePackage(this)">
+            <button class="btn" style="background:#27ae60;" onclick="document.getElementById('route-json-input').click()">📤 上傳 JSON 路線包</button>
+            <p id="route-status" style="font-size:14px; font-weight:bold; color:#e67e22; margin-top:10px;">目前雲端狀態：尚未上傳</p>
+        </div>
+
+        <div class="card" style="border-top-color: #e67e22;">
+            <h2>🚌 2. 本站車輛管理 (鎖定車號)</h2>
+            <p style="font-size: 14px; color: #666;">登記在下方的車號，才有權限登入本站並下載資料。司機無法自行新增車號。</p>
+            <div style="display:flex; gap:10px;">
+                <input type="text" id="new-bus-id" class="input-field" placeholder="新增車號 (例: 9527)" style="margin:0;">
+                <button class="btn" style="width:auto; margin:0;" onclick="addBusToStation()">新增</button>
+            </div>
+            <div class="bus-list" id="bus-list-container"></div>
+        </div>
+
+        <div class="card" style="border-top-color: #8e44ad;">
+            <h2>⚙️ 3. 全車隊廣播參數強制設定</h2>
+            <p style="font-size: 14px; color: #666;">修改後按下儲存，本站所有在外行駛的公車與遙控器，將立刻套用此設定。</p>
+            
+            <div class="setting-row">
+                <label>播報順序 (1~4)：</label>
+                <div style="display:flex; gap:4px; flex-wrap:wrap;">
+                    <select id="set-l1"><option value="zh" selected>中文</option><option value="en">英文</option><option value="tw">台語</option><option value="hk">客語</option><option value="yue">粵語</option><option value="none">無</option></select> ➔
+                    <select id="set-l2"><option value="zh">中文</option><option value="en" selected>英文</option><option value="tw">台語</option><option value="hk">客語</option><option value="yue">粵語</option><option value="none">無</option></select> ➔
+                    <select id="set-l3"><option value="zh">中文</option><option value="en">英文</option><option value="tw" selected>台語</option><option value="hk">客語</option><option value="yue">粵語</option><option value="none">無</option></select> ➔
+                    <select id="set-l4"><option value="zh">中文</option><option value="en">英文</option><option value="tw">台語</option><option value="hk" selected>客語</option><option value="yue">粵語</option><option value="none">無</option></select>
+                </div>
+            </div>
+            
+            <div class="setting-row">
+                <label>播報觸發模式：</label>
+                <select id="set-mode">
+                    <option value="all" selected>傳統模式 (兩個都播)</option>
+                    <option value="next_only">只播「下一站」 (進站靜音)</option>
+                    <option value="arr_only">只播「即將抵達」 (離站靜音)</option>
+                </select>
+            </div>
+
+            <div class="setting-row">
+                <label>到站播報格式：</label>
+                <select id="set-format">
+                    <option value="auto" selected>自動偵測</option>
+                    <option value="prefix">強制：[即將抵達] ➔ [站名]</option>
+                    <option value="suffix">強制：[站名] ➔ [到了]</option>
+                </select>
+            </div>
+            
+            <button class="btn" style="background:#8e44ad;" onclick="saveGlobalSettings()">💾 強制覆蓋全車隊設定</button>
+        </div>
+
+        <div class="card" style="border-top-color: #2980b9;">
+            <h2>🎵 4. 全站語音包派發 (自動同步)</h2>
+            <p style="font-size: 14px; color: #666;">設定 GitHub 語音包來源。儲存後，只要司機連線上線，遙控器就會全自動在背景下載並覆蓋語音，司機免操作！</p>
+            <input type="text" id="set-gh-url" class="input-field" placeholder="GitHub 專案連結 (例: https://github.com/...)">
+            <input type="password" id="set-gh-token" class="input-field" placeholder="GitHub 金鑰 (ghp_...)">
+            <button class="btn" style="background:#2980b9;" onclick="saveAudioConfig()">🚀 儲存並強制派發語音</button>
+        </div>
+
+        <button class="btn btn-danger" onclick="logout()">登出系統</button>
+    </div>
+</div>
+
+<div id="toast">訊息</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+    import { getDatabase, ref, set, get, onValue, remove } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyDjxGWY6hN4yx-v2pa6I5UItxy_PNaOPK8",
+        authDomain: "bus-remote-control.firebaseapp.com",
+        databaseURL: "https://bus-remote-control-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "bus-remote-control",
+        storageBucket: "bus-remote-control.firebasestorage.app",
+        messagingSenderId: "1056982339472",
+        appId: "1:1056982339472:web:533e3875eab63b32936d15"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    let currentStation = "";
+
+    window.showToast = function(msg) {
+        const t = document.getElementById("toast");
+        t.innerText = msg; t.className = "show";
+        setTimeout(() => { t.className = t.className.replace("show", ""); }, 3000);
+    }
+
+    window.loginStation = async function() {
+        const sid = document.getElementById('station-id').value.trim();
+        const pwd = document.getElementById('station-pwd').value.trim();
+        if(!sid || !pwd) return alert("請輸入代號與密碼！");
+
+        const pwdRef = ref(db, `stations/${sid}/password`);
+        const snapshot = await get(pwdRef);
+        
+        if (snapshot.exists()) {
+            if (snapshot.val() === pwd) {
+                unlockDashboard(sid);
+            } else {
+                alert("❌ 密碼錯誤！");
+            }
+        } else {
+            await set(pwdRef, pwd);
+            await set(ref(db, `stations/${sid}/settings`), { l1:'zh', l2:'en', l3:'tw', l4:'none', format:'auto', mode:'all' });
+            showToast("✅ 已建立新站點並登入！");
+            unlockDashboard(sid);
+        }
+    };
+
+    function unlockDashboard(sid) {
+        currentStation = sid;
+        document.getElementById('login-section').style.display = 'none';
+        document.getElementById('dashboard-section').style.display = 'block';
+        document.getElementById('main-title').innerText = `🏢 站點後台: ${sid}`;
+        
+        onValue(ref(db, `stations/${sid}/buses`), (snap) => {
+            const buses = snap.val() || {};
+            renderBusList(Object.keys(buses));
+        });
+
+        onValue(ref(db, `stations/${sid}/routes`), (snap) => {
+            const routes = snap.val();
+            const statusEl = document.getElementById('route-status');
+            if(routes && routes.length > 0) {
+                statusEl.innerText = `✅ 雲端已備妥 ${routes.length} 條路線資料！`;
+                statusEl.style.color = "#27ae60";
+            } else {
+                statusEl.innerText = `⚠️ 目前雲端沒有路線資料`;
+                statusEl.style.color = "#e74c3c";
+            }
+        });
+
+        // 讀取設定好的語音包
+        onValue(ref(db, `stations/${sid}/audio_config`), (snap) => {
+            if(snap.exists()) {
+                const cfg = snap.val();
+                document.getElementById('set-gh-url').value = cfg.url || '';
+                document.getElementById('set-gh-token').value = cfg.token || '';
+            }
+        });
+    }
+
+    window.addBusToStation = async function() {
+        const busId = document.getElementById('new-bus-id').value.trim();
+        if(!busId) return;
+        await set(ref(db, `stations/${currentStation}/buses/${busId}`), true);
+        document.getElementById('new-bus-id').value = '';
+        showToast(`已授權車號 ${busId}`);
+    };
+
+    window.removeBus = async function(busId) {
+        if(confirm(`確定要取消車號 ${busId} 的權限嗎？`)) {
+            await remove(ref(db, `stations/${currentStation}/buses/${busId}`));
+            showToast(`已移除車號 ${busId}`);
+        }
+    };
+
+    function renderBusList(busArray) {
+        const container = document.getElementById('bus-list-container');
+        container.innerHTML = '';
+        if(busArray.length === 0) container.innerHTML = '<span style="color:#999; font-size:14px;">目前無車輛</span>';
+        busArray.forEach(bus => {
+            container.innerHTML += `<div class="bus-tag">🚌 ${bus} <span onclick="removeBus('${bus}')">✖</span></div>`;
+        });
+    }
+
+    window.uploadRoutePackage = function(input) {
+        const file = input.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            try {
+                const routeData = JSON.parse(e.target.result);
+                if(!Array.isArray(routeData)) throw new Error("JSON 格式錯誤 (非陣列)");
+                await set(ref(db, `stations/${currentStation}/routes`), routeData);
+                showToast(`✅ 成功上傳 ${routeData.length} 條路線至雲端！`);
+            } catch(err) {
+                alert("❌ 上傳失敗，請確認是否為正確的 Backup.json");
+            }
+            input.value = '';
+        };
+        reader.readAsText(file);
+    };
+
+    window.saveGlobalSettings = async function() {
+        const settings = {
+            l1: document.getElementById('set-l1').value,
+            l2: document.getElementById('set-l2').value,
+            l3: document.getElementById('set-l3').value,
+            l4: document.getElementById('set-l4').value,
+            format: document.getElementById('set-format').value,
+            mode: document.getElementById('set-mode').value
+        };
+        await set(ref(db, `stations/${currentStation}/settings`), settings);
+        await set(ref(db, `stations/${currentStation}/force_update`), Date.now());
+        showToast("✅ 全車隊設定已強制更新！");
+    };
+
+    window.saveAudioConfig = async function() {
+        const url = document.getElementById('set-gh-url').value.trim();
+        const token = document.getElementById('set-gh-token').value.trim();
+        if (!url || !token) { alert("請填寫完整連結與金鑰！"); return; }
+        
+        await set(ref(db, `stations/${currentStation}/audio_config`), { url: url, token: token });
+        showToast("✅ 語音包來源已更新，車機連線時將自動下載！");
+    };
+
+    window.logout = function() { location.reload(); };
+</script>
+</body>
+</html>
