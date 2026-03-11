@@ -14,19 +14,21 @@
     .btn { background: #007bff; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-size: 16px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 10px; }
     .btn:hover { background: #0056b3; }
     .btn-danger { background: #e74c3c; } .btn-danger:hover { background: #c0392b; }
+    .btn-success { background: #27ae60; } .btn-success:hover { background: #219150; }
 
-    #dashboard-section { display: none; }
+    #dashboard-section, #super-admin-section { display: none; }
     .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 20px; border-top: 5px solid #007bff; }
     .card h2 { margin-top: 0; font-size: 20px; color: #34495e; border-bottom: 2px solid #eee; padding-bottom: 10px; }
     
     .bus-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; }
     .bus-tag { background: #e3f2fd; color: #0984e3; padding: 8px 15px; border-radius: 20px; font-weight: bold; display: flex; align-items: center; gap: 8px; }
-    .bus-tag span { cursor: pointer; color: #e74c3c; }
+    .bus-tag.admin-tag { background: #f9e79f; color: #d35400; }
+    .bus-tag span { cursor: pointer; color: #e74c3c; font-size: 18px; }
 
     .setting-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
     .setting-row select, .setting-row input { padding: 8px; border-radius: 6px; border: 1px solid #ccc; }
     
-    #toast { visibility: hidden; min-width: 250px; background-color: #333; color: #fff; text-align: center; border-radius: 8px; padding: 12px; position: fixed; z-index: 1; left: 50%; bottom: 30px; transform: translateX(-50%); }
+    #toast { visibility: hidden; min-width: 250px; background-color: #333; color: #fff; text-align: center; border-radius: 8px; padding: 12px; position: fixed; z-index: 100; left: 50%; bottom: 30px; transform: translateX(-50%); }
     #toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
     @keyframes fadein { from { bottom: 0; opacity: 0; } to { bottom: 30px; opacity: 1; } }
     @keyframes fadeout { from { bottom: 30px; opacity: 1; } to { bottom: 0; opacity: 0; } }
@@ -38,11 +40,28 @@
     <h1 id="main-title">🚌 站務後台管理系統</h1>
 
     <div id="login-section">
-        <h2 style="margin-top:0;">調度站登入</h2>
-        <input type="text" id="station-id" class="input-field" placeholder="輸入站點代號 (例如: Station_A)">
-        <input type="password" id="station-pwd" class="input-field" placeholder="輸入站務員密碼">
-        <button class="btn" onclick="loginStation()">登入 / 建立站點</button>
-        <p style="font-size:12px; color:#888; margin-top:15px;">※ 若站點不存在，輸入密碼將自動建立新站點</p>
+        <h2 style="margin-top:0;">系統登入</h2>
+        <input type="text" id="station-id" class="input-field" placeholder="輸入調度站代號">
+        <input type="password" id="station-pwd" class="input-field" placeholder="輸入密碼">
+        <button class="btn" onclick="loginStation()">登入系統</button>
+        <p style="font-size:12px; color:#888; margin-top:15px;">※ 首次登入將自動綁定您輸入的密碼</p>
+    </div>
+
+    <div id="super-admin-section">
+        <div class="card" style="border-top-color: #f39c12;">
+            <h2>➕ 開通新調度站權限</h2>
+            <p style="font-size: 14px; color: #666;">請輸入允許開通的站點代號。該站務員首次登入時可自行設定專屬密碼。</p>
+            <div style="display:flex; gap:10px;">
+                <input type="text" id="new-station-id" class="input-field" placeholder="站點代號 (例: Station_A)" style="margin:0;">
+                <button class="btn btn-success" style="width:auto; margin:0; white-space:nowrap;" onclick="createNewStation()">新增開通</button>
+            </div>
+        </div>
+
+        <div class="card" style="border-top-color: #d35400;">
+            <h2>🏢 已開通調度站列表</h2>
+            <div class="bus-list" id="admin-station-list"></div>
+        </div>
+        <button class="btn btn-danger" onclick="logout()">登出系統</button>
     </div>
 
     <div id="dashboard-section">
@@ -60,7 +79,7 @@
             <p style="font-size: 14px; color: #666;">登記在下方的車號，才有權限登入本站並下載資料。司機無法自行新增車號。</p>
             <div style="display:flex; gap:10px;">
                 <input type="text" id="new-bus-id" class="input-field" placeholder="新增車號 (例: 9527)" style="margin:0;">
-                <button class="btn" style="width:auto; margin:0;" onclick="addBusToStation()">新增</button>
+                <button class="btn btn-success" style="width:auto; margin:0;" onclick="addBusToStation()">新增</button>
             </div>
             <div class="bus-list" id="bus-list-container"></div>
         </div>
@@ -139,28 +158,106 @@
         setTimeout(() => { t.className = t.className.replace("show", ""); }, 3000);
     }
 
+    // 🔑 登入邏輯
     window.loginStation = async function() {
         const sid = document.getElementById('station-id').value.trim();
         const pwd = document.getElementById('station-pwd').value.trim();
         if(!sid || !pwd) return alert("請輸入代號與密碼！");
 
-        const pwdRef = ref(db, `stations/${sid}/password`);
-        const snapshot = await get(pwdRef);
+        // ✨ 特殊隱藏帳號：超級管理員
+        if (sid.toLowerCase() === 'admin') {
+            const adminRef = ref(db, 'admin_password');
+            const adminSnap = await get(adminRef);
+            
+            if (!adminSnap.exists()) {
+                if(confirm("即將把您剛剛輸入的密碼設為『超級管理員密碼』，確定嗎？")) {
+                    await set(adminRef, pwd);
+                    showToast("✅ 管理員密碼初始化成功！");
+                    unlockSuperAdmin();
+                }
+            } else {
+                if (adminSnap.val() === pwd) {
+                    unlockSuperAdmin();
+                } else {
+                    alert("❌ 管理員密碼錯誤！");
+                }
+            }
+            return;
+        }
+
+        // 一般調度站登入
+        const stationRef = ref(db, `stations/${sid}`);
+        const snapshot = await get(stationRef);
         
         if (snapshot.exists()) {
-            if (snapshot.val() === pwd) {
-                unlockDashboard(sid);
+            const stationData = snapshot.val();
+            // 檢查是否已經設定過密碼
+            if (stationData.password) {
+                if (stationData.password === pwd) {
+                    unlockDashboard(sid);
+                } else {
+                    alert("❌ 密碼錯誤！");
+                }
             } else {
-                alert("❌ 密碼錯誤！");
+                // 站點存在，但還沒設定密碼 (第一次登入)
+                if(confirm("此為該站點首次登入，將把您剛剛輸入的密碼設為專屬密碼，確定嗎？")) {
+                    await set(ref(db, `stations/${sid}/password`), pwd);
+                    await set(ref(db, `stations/${sid}/settings`), { l1:'zh', l2:'en', l3:'tw', l4:'none', format:'auto', mode:'all' });
+                    showToast("✅ 密碼設定成功並登入！");
+                    unlockDashboard(sid);
+                }
             }
         } else {
-            await set(pwdRef, pwd);
-            await set(ref(db, `stations/${sid}/settings`), { l1:'zh', l2:'en', l3:'tw', l4:'none', format:'auto', mode:'all' });
-            showToast("✅ 已建立新站點並登入！");
-            unlockDashboard(sid);
+            // 🛑 禁止自動建立，提示找管理員
+            alert("❌ 此調度站尚未開通！\n請聯繫管理員為您建立站點權限。");
         }
     };
 
+    // 👑 解鎖超級管理員畫面
+    function unlockSuperAdmin() {
+        document.getElementById('login-section').style.display = 'none';
+        document.getElementById('super-admin-section').style.display = 'block';
+        document.getElementById('main-title').innerText = `👑 系統總管 (Admin)`;
+
+        // 監聽所有站點列表
+        onValue(ref(db, 'stations'), (snap) => {
+            const list = document.getElementById('admin-station-list');
+            list.innerHTML = '';
+            if(snap.exists()) {
+                const stations = snap.val();
+                for(let s in stations) {
+                    list.innerHTML += `<div class="bus-tag admin-tag">🏢 ${s} <span onclick="deleteStation('${s}')">✖</span></div>`;
+                }
+            } else {
+                list.innerHTML = '<span style="color:#999; font-size:14px;">目前尚無調度站</span>';
+            }
+        });
+    }
+
+    // ➕ 管理員建立新站點 (只給權限，不設密碼)
+    window.createNewStation = async function() {
+        const id = document.getElementById('new-station-id').value.trim();
+        if(!id) return alert("請填寫站點代號！");
+
+        const snap = await get(ref(db, `stations/${id}`));
+        if(snap.exists()) return alert("❌ 此站點已經存在！");
+
+        // 建立一個初始狀態，讓站務員可以第一次登入
+        await set(ref(db, `stations/${id}/status`), 'pending');
+        
+        showToast(`✅ 成功開通站點權限：${id}`);
+        document.getElementById('new-station-id').value = '';
+    }
+
+    // 🗑️ 管理員刪除站點
+    window.deleteStation = async function(id) {
+        if(confirm(`⚠️ 警告：確定要徹底刪除調度站 [${id}] 嗎？\n刪除後，該站所有路線與車輛都會失效！`)) {
+            await remove(ref(db, `stations/${id}`));
+            showToast(`✅ 已刪除調度站 ${id}`);
+        }
+    }
+
+    // 🎛️ 一般站點解鎖畫面
     function unlockDashboard(sid) {
         currentStation = sid;
         document.getElementById('login-section').style.display = 'none';
@@ -184,7 +281,6 @@
             }
         });
 
-        // 讀取設定好的語音包
         onValue(ref(db, `stations/${sid}/audio_config`), (snap) => {
             if(snap.exists()) {
                 const cfg = snap.val();
@@ -199,13 +295,13 @@
         if(!busId) return;
         await set(ref(db, `stations/${currentStation}/buses/${busId}`), true);
         document.getElementById('new-bus-id').value = '';
-        showToast(`已授權車號 ${busId}`);
+        showToast(`✅ 已授權車號 ${busId}`);
     };
 
     window.removeBus = async function(busId) {
         if(confirm(`確定要取消車號 ${busId} 的權限嗎？`)) {
             await remove(ref(db, `stations/${currentStation}/buses/${busId}`));
-            showToast(`已移除車號 ${busId}`);
+            showToast(`✅ 已移除車號 ${busId}`);
         }
     };
 
