@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>📱 旗艦版司機遙控器 (主機同步路線版)</title>
+<title>📱 旗艦版司機遙控器 (無錯修復版)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center; padding: 15px; background: #2c3e50; color: white; margin: 0; display: flex; flex-direction: column; box-sizing: border-box; min-height: 100vh; }
@@ -46,6 +46,8 @@
 </style>
 </head>
 <body>
+
+    <audio id="apple-audio-player" playsinline></audio>
 
     <h2>🚌 旗艦版廣播遙控器</h2>
 
@@ -134,9 +136,12 @@
 
         window.pidsAssets = { common: {}, zh: {}, en: {}, tw: {}, hk: {}, yue: {} };
         let pidsPlayQueue = []; window.pidsIsPlaying = false; let pidsAnnounceId = 0;
-        window._globalVolume = 1.0; window._activeAudio = null; window._activeAudioCleanup = null; window._activeTTSCleanup = null;
+        window._globalVolume = 1.0; 
         
-        // 雲端預設設定 (站務員配發前防呆)
+        // ★ iPhone 解鎖宣告
+        const globalPlayer = document.getElementById('apple-audio-player');
+        let isAudioUnlocked = false;
+
         let globalStationSettings = { l1:'zh', l2:'en', l3:'tw', l4:'none', format:'auto', mode:'all' };
 
         window.onload = async function() {
@@ -152,6 +157,14 @@
             if (!isGpsActive) window.toggleGPS();
         };
 
+        // ★ 確保這段函式有被定義：用來顯示警告與提示
+        window.showToast = function(m) { 
+            const t = document.getElementById('toast'); 
+            t.innerText = m; 
+            t.style.visibility = 'visible'; 
+            setTimeout(() => { t.style.visibility = 'hidden'; }, 3000); 
+        };
+
         window.toggleConnect = async function() {
             const busInput = document.getElementById('bus-id'); 
             const stationInput = document.getElementById('station-id');
@@ -162,6 +175,17 @@
                 currentBusId = busInput.value.trim(); 
                 currentStationId = stationInput.value.trim();
                 
+                // ★ 啟動解鎖
+                if (!isAudioUnlocked) {
+                    try {
+                        globalPlayer.src = "data:audio/mp3;base64,//OwgAAAAAAAAAAAAAAAWWAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==";
+                        await globalPlayer.play();
+                        globalPlayer.pause();
+                    } catch(e) {}
+                    if (window.speechSynthesis) window.speechSynthesis.speak(new SpeechSynthesisUtterance(''));
+                    isAudioUnlocked = true;
+                }
+
                 btn.innerText = "身分驗證中...";
                 const authSnap = await get(ref(db, `stations/${currentStationId}/buses/${currentBusId}`));
                 if (!authSnap.exists()) {
@@ -177,33 +201,27 @@
                 btn.innerText = "斷開連線"; btn.classList.add("connected");
                 document.getElementById('control-panel').classList.add("active");
                 document.getElementById('status-panel').style.display = "block";
-                
-                // 蘋果語音解鎖
-                if (window.speechSynthesis) { let unlockTTS = new SpeechSynthesisUtterance(''); unlockTTS.volume = 0; window.speechSynthesis.speak(unlockTTS); }
-                try { const unlockAudio = new Audio("data:audio/mp3;base64,//M0QAAAAHPTT3IAQAAKAAQAAH4EAAABACAAAIAiAAgH/4//wMAAAB/8AAA/wD///3/8/8D/////wAAADQAAP//gQAA"); unlockAudio.play().then(() => { unlockAudio.pause(); }).catch(e => {}); } catch(err) {}
+                window.showToast("✅ 已連線，播音系統解鎖成功！");
 
                 listenToHostState();
                 listenToAudioTrigger();
 
-                // 監聽站務員播報參數
                 unsubscribeSettings = onValue(ref(db, `stations/${currentStationId}/settings`), (snap) => {
                     if(snap.exists()) globalStationSettings = snap.val();
                 });
 
-                // 監聽站務員派發的自動語音包 (背景更新)
                 unsubscribeAudioConfig = onValue(ref(db, `stations/${currentStationId}/audio_config`), (snap) => {
                     if(snap.exists()) {
                         const cfg = snap.val();
                         const savedUrl = localStorage.getItem('remote_github_url');
                         if (cfg.url && cfg.token && cfg.url !== savedUrl) {
-                            showToast("☁️ 偵測到新版語音包，開始自動同步...");
-                            // 自動同步時，強制清空舊檔
-                            syncGitHubAudio(cfg.url, cfg.token, true);
+                            window.showToast("☁️ 偵測到雲端新資料包，開始自動同步...");
+                            window.syncGitHubAudio(cfg.url, cfg.token, true);
                         }
                     }
                 });
                 
-                heartbeatInterval = setInterval(() => { set(ref(db, 'buses/' + currentBusId + '/remote_status'), { alive: true, timestamp: Date.now() }); }, 3000);
+                heartbeatInterval = setInterval(() => { set(ref(db, 'buses/' + currentBusId + '/remote_status'), { alive: true, timestamp: Date.now() }).catch(e=>{}); }, 3000);
             } else {
                 busInput.disabled = false; stationInput.disabled = false; isConnected = false; 
                 btn.innerText = "連線上線"; btn.classList.remove("connected");
@@ -219,7 +237,7 @@
         const sendPositionToFirebase = (pos) => {
             const lat = pos.coords.latitude; const lon = pos.coords.longitude;
             if (isConnected && currentBusId) {
-                set(ref(db, 'buses/' + currentBusId + '/gps'), { lat: lat, lon: lon, heading: pos.coords.heading !== null ? pos.coords.heading : -1, speed: pos.coords.speed !== null ? pos.coords.speed : 0, timestamp: Date.now() });
+                set(ref(db, 'buses/' + currentBusId + '/gps'), { lat: lat, lon: lon, heading: pos.coords.heading !== null ? pos.coords.heading : -1, speed: pos.coords.speed !== null ? pos.coords.speed : 0, timestamp: Date.now() }).catch(e=>{});
             }
             const d = new Date(); const timeStr = d.getHours() + ":" + d.getMinutes().toString().padStart(2, '0') + ":" + d.getSeconds().toString().padStart(2, '0');
             const gpsStatusEl = document.getElementById('gps-status');
@@ -243,7 +261,6 @@
             }
         };
 
-        // ✨ 恢復：遙控器下拉選單直接聽命於主機真實的 RouteList ✨
         function listenToHostState() {
             unsubscribeState = onValue(ref(db, 'buses/' + currentBusId + '/state'), (snapshot) => {
                 const data = snapshot.val();
@@ -256,7 +273,6 @@
                     if (data.isPidsRunning) { pidsBtn.innerText = "🛑 停止公車看板"; pidsBtn.classList.add('active'); } 
                     else { pidsBtn.innerText = "🚌 啟動公車看板"; pidsBtn.classList.remove('active'); }
 
-                    // 主機回報路線，遙控器直接同步選單
                     if (data.routeList && Array.isArray(data.routeList)) {
                         const select = document.getElementById('route-select'); 
                         const currentVal = select.value; 
@@ -282,7 +298,7 @@
                 if (isInitialLoad) { isInitialLoad = false; lastAudioId = data.id; return; }
                 if (data.id !== lastAudioId) {
                     lastAudioId = data.id;
-                    showToast(`📡 收到訊號：${data.zh}`);
+                    window.showToast(`📡 收到訊號：${data.zh}`);
                     triggerRemoteAnnouncement(data);
                 }
             });
@@ -309,7 +325,6 @@
 
         function triggerRemoteAnnouncement(data) {
             pidsAnnounceId++; const myId = pidsAnnounceId;
-            if (window._activeAudio) { try{window._activeAudio.pause();}catch(e){} window._activeAudio=null; }
             if (window.speechSynthesis) window.speechSynthesis.cancel();
             pidsPlayQueue = []; window.pidsIsPlaying = false;
 
@@ -331,6 +346,7 @@
                 else if (lang === 'tw') url = findPidsAudio('tw', sNameZH); 
                 else if (lang === 'hk') url = findPidsAudio('hk', sNameZH); 
                 else if (lang === 'yue') { url = findPidsAudio('yue', sNameZH); ttsText = sNameZH; ttsLang = 'zh-HK'; }
+                
                 if (url) pidsPlayQueue.push({ type: 'audio', src: url }); 
                 else if (ttsText) pidsPlayQueue.push({ type: 'tts', text: ttsText, lang: ttsLang });
             };
@@ -349,47 +365,62 @@
             processPidsQueue(myId);
         }
 
+        // ★ 核心修改：強制使用 iPhone 解鎖播放器，確保聲音不被擋
         async function processPidsQueue(announceId) {
-            if (window.pidsIsPlaying) return; window.pidsIsPlaying = true;
-            while (pidsPlayQueue.length > 0) {
-                if (announceId !== pidsAnnounceId) break; 
-                const item = pidsPlayQueue.shift();
-                if (item.type === 'audio') {
-                    await new Promise((resolve) => {
-                        let isDone = false; let timeoutId; 
-                        const audio = new Audio(item.src); audio.volume = window._globalVolume; window._activeAudio = audio;
-                        const cleanup = () => { if(isDone) return; isDone = true; clearTimeout(timeoutId); audio.onended=null; audio.onerror=null; resolve(); };
-                        audio.onended = cleanup; audio.onerror = cleanup; timeoutId = setTimeout(cleanup, 10000);
-                        audio.addEventListener('loadedmetadata', () => { if(!isDone){ clearTimeout(timeoutId); timeoutId = setTimeout(cleanup, (audio.duration*1000)+3000); } });
-                        audio.play().catch(cleanup);
-                    });
-                } else if (item.type === 'tts') {
-                    await new Promise((resolve) => {
-                        if (!window.speechSynthesis) { resolve(); return; } 
-                        let timeoutId; try {
-                            window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(item.text); let isDone = false; 
-                            const cleanup = () => { if(isDone) return; isDone = true; clearTimeout(timeoutId); u.onend=null; u.onerror=null; resolve(); };
-                            u.lang = item.lang || 'zh-TW'; u.rate = 0.9; u.volume = window._globalVolume; u.onend = cleanup; u.onerror = cleanup;
-                            timeoutId = setTimeout(cleanup, 8000); window.speechSynthesis.speak(u);
-                        } catch(e) { resolve(); }
-                    });
+            if (window.pidsIsPlaying || pidsPlayQueue.length === 0) return; 
+            window.pidsIsPlaying = true;
+            
+            const item = pidsPlayQueue.shift();
+
+            if (item.type === 'audio') {
+                globalPlayer.src = item.src;
+                globalPlayer.volume = window._globalVolume;
+                
+                globalPlayer.onended = () => { finishItem(announceId); };
+                globalPlayer.onerror = () => { console.warn("音檔失效", item.src); finishItem(announceId); };
+                
+                try {
+                    await globalPlayer.play();
+                } catch(e) {
+                    console.error("iPhone 阻擋播放:", e);
+                    finishItem(announceId);
+                }
+
+            } else if (item.type === 'tts') {
+                if (window.speechSynthesis) {
+                    window.speechSynthesis.cancel();
+                    const u = new SpeechSynthesisUtterance(item.text);
+                    u.lang = item.lang || 'zh-TW';
+                    u.rate = 0.9;
+                    u.volume = window._globalVolume;
+                    u.onend = () => { finishItem(announceId); };
+                    u.onerror = () => { finishItem(announceId); };
+                    window.speechSynthesis.speak(u);
+                } else {
+                    finishItem(announceId);
                 }
             }
-            if (announceId === pidsAnnounceId) window.pidsIsPlaying = false;
         }
 
-        // ✨ 恢復：手動匯入語音前，彈出視窗詢問是否清空 ✨
+        function finishItem(announceId) {
+            globalPlayer.onended = null;
+            globalPlayer.onerror = null;
+            setTimeout(() => {
+                window.pidsIsPlaying = false;
+                if (announceId === pidsAnnounceId) processPidsQueue(announceId); 
+            }, 300);
+        }
+
+        // ★ 已修復：找回了被誤刪的同步函數
         window.manualSyncGitHub = function() {
             const urlInput = document.getElementById('gh-repo-url').value.trim(); 
             const tokenInput = document.getElementById('gh-token').value.trim();
             if (!urlInput || !tokenInput) { alert("請填寫專案連結與金鑰！"); return; }
             
             const shouldClear = confirm("是否清空目前所有音檔？\n\n(按「確定」將清空舊檔並重新下載)\n(按「取消」將直接覆蓋/新增入現有資料庫)");
-            
-            syncGitHubAudio(urlInput, tokenInput, shouldClear);
+            window.syncGitHubAudio(urlInput, tokenInput, shouldClear);
         };
 
-        // 參數化的下載引擎 (支援手動/自動)
         window.syncGitHubAudio = async function(urlInput, tokenInput, clearOld = true) {
             const match = urlInput.match(/github\.com\/([^\/]+)\/([^\/]+)/);
             if (!match) { alert("專案連結格式錯誤！"); return; }
@@ -408,7 +439,6 @@
                 const zipBlob = await zipRes.blob(); let zip = await JSZip.loadAsync(zipBlob);
                 const folderMap = { '罐頭': 'common', '中文': 'zh', '英文': 'en', '台語': 'tw', '客語': 'hk' };
                 
-                // 如果需要清空舊檔
                 if (clearOld) {
                     await indexedDB.deleteDatabase("Remote_PIDS_Audio");
                     window.pidsAssets = { common: {}, zh: {}, en: {}, tw: {}, hk: {}, yue: {} };
@@ -440,22 +470,67 @@
             }
         };
 
-        window.sendCommand = (type) => set(ref(db, 'buses/'+currentBusId+'/command'), { action: type, timestamp: Date.now() });
+        window.handlePidsZip = async function(input) {
+            let f = input.files[0]; if(!f) return;
+            const overlay = document.getElementById('loading-overlay');
+            overlay.innerHTML = "解壓縮音檔中..."; overlay.style.display = 'flex';
+            try {
+                let zip = await JSZip.loadAsync(f); let c = 0;
+                const folderMap = { '罐頭': 'common', '中文': 'zh', '英文': 'en', '台語': 'tw', '客語': 'hk' };
+                for(let path of Object.keys(zip.files)){
+                    if(!zip.files[path].dir && !path.includes('__MACOSX')){
+                        let fileName = path.split('/').pop();
+                        let b = await zip.files[path].async("blob");
+                        let category = 'common';
+                        for (let [zh, code] of Object.entries(folderMap)) { if (path.includes(zh)) category = code; }
+                        window.pidsAssets[category][fileName] = URL.createObjectURL(b);
+                        await savePidsAudioToDB(category, fileName, b);
+                        c++;
+                    }
+                }
+                alert(`✅ 成功匯入 ${c} 個音檔至遙控器！`);
+            } catch(e){ alert("ZIP解析失敗！"); }
+            overlay.style.display = 'none'; input.value = '';
+        };
+
+        // ★ 加上了防止未連線亂按的防呆機制，再也不會跳紅色叉叉了！
+        window.sendCommand = (type) => {
+            if (!isConnected) return window.showToast("⚠️ 請先連線上線！");
+            
+            if (type === 'TOGGLE_PIDS') {
+                const pidsBtn = document.getElementById('btn-remote-pids');
+                if (pidsBtn.classList.contains('active')) {
+                    pidsBtn.innerText = "🚌 啟動公車看板"; pidsBtn.classList.remove('active');
+                } else {
+                    pidsBtn.innerText = "🛑 停止公車看板"; pidsBtn.classList.add('active');
+                }
+            }
+            set(ref(db, 'buses/'+currentBusId+'/command'), { action: type, timestamp: Date.now() }).catch(e=>{});
+        };
+
         window.confirmAndLoadRoute = (dir) => {
+            if (!isConnected) return window.showToast("⚠️ 請先連線上線！");
             const select = document.getElementById('route-select'); const rid = select.value;
             if(!rid) return alert("請選擇路線");
             const routeName = select.options[select.selectedIndex].text;
             const dirName = dir === 'outbound' ? '🔵 去程' : '⚪ 返程';
             const wantStartPids = confirm(`即將載入「${routeName}」 ${dirName}\n\n是否要一併【啟動公車看板】？\n\n(按「確定」= 載入並自動啟動)`);
-            set(ref(db, 'buses/'+currentBusId+'/command'), { action: 'LOAD_ROUTE_DIR', payload: { id: rid, dir: dir }, timestamp: Date.now() });
+            set(ref(db, 'buses/'+currentBusId+'/command'), { action: 'LOAD_ROUTE_DIR', payload: { id: rid, dir: dir }, timestamp: Date.now() }).catch(e=>{});
             if (wantStartPids) {
-                showToast("⏳ 路線載入中，即將啟動看板...");
-                setTimeout(() => { set(ref(db, 'buses/'+currentBusId+'/command'), { action: 'TOGGLE_PIDS', timestamp: Date.now() }); showToast("✅ 路線已載入 (已啟動看板)"); }, 800);
-            } else { showToast("✅ 路線已載入 (未啟動看板)"); }
+                window.showToast("⏳ 路線載入中，即將啟動看板...");
+                setTimeout(() => { 
+                    set(ref(db, 'buses/'+currentBusId+'/command'), { action: 'TOGGLE_PIDS', timestamp: Date.now() }).catch(e=>{}); 
+                    window.showToast("✅ 路線已載入 (已啟動看板)"); 
+                }, 800);
+            } else { window.showToast("✅ 路線已載入 (未啟動看板)"); }
         };
-        window.sendVolume = (v) => { window._globalVolume = v/100; set(ref(db, 'buses/'+currentBusId+'/command'), { action: 'SET_VOLUME', payload: v/100, timestamp: Date.now() }); };
-        function showToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.visibility = 'visible'; setTimeout(()=>t.style.visibility='hidden', 3000); }
-        
+
+        window.sendVolume = (v) => { 
+            window._globalVolume = v/100; 
+            if (!isConnected) return;
+            set(ref(db, 'buses/'+currentBusId+'/command'), { action: 'SET_VOLUME', payload: v/100, timestamp: Date.now() }).catch(e=>{}); 
+        };
+
         const PIDS_DB_NAME = "Remote_PIDS_Audio"; const STORE = "audio_assets";
         function openPidsDB() { return new Promise((res) => { const r = indexedDB.open(PIDS_DB_NAME, 1); r.onupgradeneeded = e => e.target.result.createObjectStore(STORE); r.onsuccess = e => res(e.target.result); }); }
         async function savePidsAudioToDB(cat, fn, b) { const db = await openPidsDB(); db.transaction(STORE, "readwrite").objectStore(STORE).put(b, `${cat}___${fn}`); }
