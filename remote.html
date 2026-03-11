@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>📱 旗艦版司機遙控器 (全自動 FMS 版)</title>
+<title>📱 旗艦版司機遙控器 (主機同步路線版)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center; padding: 15px; background: #2c3e50; color: white; margin: 0; display: flex; flex-direction: column; box-sizing: border-box; min-height: 100vh; }
     h2 { margin-top: 5px; margin-bottom: 15px; color: #ecf0f1; font-size: 22px; }
     .pairing-box { background: #34495e; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
     .input-group { display: flex; align-items: center; gap: 8px; justify-content: center; }
-    input[type="text"] { padding: 12px; font-size: 16px; width: 60%; border-radius: 8px; border: none; text-align: center; font-weight: bold; }
+    input[type="text"], input[type="password"] { padding: 12px; font-size: 16px; width: 60%; border-radius: 8px; border: none; text-align: center; font-weight: bold; }
     .btn-connect { padding: 12px 15px; font-size: 16px; font-weight: bold; background: #27ae60; color: white; border: none; border-radius: 8px; cursor: pointer; white-space: nowrap; }
     .btn-connect.connected { background: #e67e22; }
     .status-panel { background: #16a085; padding: 12px; border-radius: 10px; margin-bottom: 15px; text-align: left; font-size: 15px; line-height: 1.5; font-weight: bold; box-shadow: inset 0 2px 5px rgba(0,0,0,0.1); }
@@ -28,6 +28,7 @@
     .btn-pids.active { background: #c0392b; box-shadow: 0 4px 0 #922b21; }
     .btn-gps { background: #007bff; box-shadow: 0 4px 0 #0056b3; margin-bottom: 10px; width: 100%; }
     .btn-gps.active { background: #dc3545; box-shadow: 0 4px 0 #c82333; }
+    .btn-audio-set { background: #9b59b6; box-shadow: 0 4px 0 #8e44ad; font-size: 16px; margin-bottom: 10px; width: 100%; }
     .btn-out  { background: #2980b9; box-shadow: 0 4px 0 #1f618d; }
     .btn-in   { background: #8e44ad; box-shadow: 0 4px 0 #732d91; }
     .btn-prev { background: #7f8c8d; box-shadow: 0 4px 0 #2c3e50; }
@@ -36,6 +37,10 @@
     .slider-container { display: flex; align-items: center; gap: 10px; }
     input[type="range"] { flex: 1; accent-color: #2ecc71; }
     
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 30000; justify-content: center; align-items: center; backdrop-filter: blur(3px); }
+    .modal-content { background: white; color: #333; width: 90%; max-width: 400px; max-height: 85vh; border-radius: 16px; padding: 20px; overflow-y: auto; text-align: left; }
+    .modal-header { font-size: 20px; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; display: flex; justify-content: space-between; }
+    .audio-setting-section { background: #f8f9fa; padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #eee; }
     #loading-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.95); z-index: 40000; justify-content: center; align-items: center; flex-direction: column; color:#333; font-weight:bold; font-size:18px; line-height:1.5;}
     #toast { visibility: hidden; position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 20px; z-index: 99999; }
 </style>
@@ -63,12 +68,13 @@
         <div class="control-card" style="background:#1abc9c;">
             <div class="card-title" style="color:white;">📺 系統控制</div>
             <button id="btn-remote-pids" class="btn-action btn-pids btn-full" onclick="sendCommand('TOGGLE_PIDS')">🚌 啟動公車看板</button>
+            <button class="btn-action btn-audio-set btn-full" onclick="document.getElementById('audio-modal').style.display='flex'">⚙️ 手動匯入語音包</button>
             <button id="btn-gps" class="btn-action btn-gps btn-full" onclick="toggleGPS()">📡 開啟手機 GPS 串流</button>
             <div id="gps-status" style="font-size:13px; font-weight:bold; color:#ecf0f1; background:rgba(0,0,0,0.2); padding:8px; border-radius:6px;">等待啟動...</div>
         </div>
         
         <div class="control-card">
-            <div class="card-title">📍 路線載入與方向 (雲端同步)</div>
+            <div class="card-title">📍 路線載入與方向 (跟隨主機)</div>
             <select id="route-select"><option value="">等待主機回傳路線列表...</option></select>
             <div class="btn-grid">
                 <button class="btn-action btn-out" onclick="confirmAndLoadRoute('outbound')">🔵 去程</button>
@@ -93,6 +99,20 @@
         </div>
     </div>
 
+    <div id="audio-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">⚙️ 手動匯入語音包<button onclick="document.getElementById('audio-modal').style.display='none'" style="border:none;background:none;font-size:20px;">✕</button></div>
+            
+            <div class="audio-setting-section" style="background:#e3f2fd; border-color:#b3e5fc;">
+                <h4 style="margin-top:0; color:#0277bd;">☁️ 同步 GitHub 語音包</h4>
+                <p style="font-size:12px; color:#555;">(匯入時系統會自動詢問是否需要清空舊音檔)</p>
+                <input type="text" id="gh-repo-url" placeholder="專案連結 (例: https://github.com/...)" style="width:100%; margin-bottom:8px; box-sizing:border-box;">
+                <input type="password" id="gh-token" placeholder="GitHub 金鑰 (ghp_...)" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
+                <button onclick="manualSyncGitHub()" style="width:100%; padding:10px; background:#0288d1; color:white; border:none; border-radius:6px; font-weight:bold;">下載 audio.zip 並解壓縮</button>
+            </div>
+        </div>
+    </div>
+
     <div id="loading-overlay">處理中，請稍候...</div>
     <div id="toast"></div>
 
@@ -109,18 +129,20 @@
         const app = initializeApp(firebaseConfig); const db = getDatabase(app);
         
         let isConnected = false; let currentBusId = ""; let currentStationId = ""; 
-        let unsubscribeState = null; let unsubscribeAudio = null; let unsubscribeSettings = null; 
-        let unsubscribeRoutes = null; let unsubscribeAudioConfig = null;
+        let unsubscribeState = null; let unsubscribeAudio = null; let unsubscribeSettings = null; let unsubscribeAudioConfig = null;
         let gpsWatchId = null; let gpsIntervalId = null; let isGpsActive = false; let wakeLock = null; let heartbeatInterval = null;
 
         window.pidsAssets = { common: {}, zh: {}, en: {}, tw: {}, hk: {}, yue: {} };
         let pidsPlayQueue = []; window.pidsIsPlaying = false; let pidsAnnounceId = 0;
         window._globalVolume = 1.0; window._activeAudio = null; window._activeAudioCleanup = null; window._activeTTSCleanup = null;
         
-        // 雲端預設設定
+        // 雲端預設設定 (站務員配發前防呆)
         let globalStationSettings = { l1:'zh', l2:'en', l3:'tw', l4:'none', format:'auto', mode:'all' };
 
         window.onload = async function() {
+            document.getElementById('gh-repo-url').value = localStorage.getItem('remote_github_url') || '';
+            document.getElementById('gh-token').value = localStorage.getItem('remote_github_token') || '';
+            
             const savedBusId = localStorage.getItem('remote_saved_bus_id');
             const savedStationId = localStorage.getItem('remote_saved_station_id');
             if (savedBusId) document.getElementById('bus-id').value = savedBusId;
@@ -163,31 +185,20 @@
                 listenToHostState();
                 listenToAudioTrigger();
 
-                // 1. 監聽站務員播報參數
+                // 監聽站務員播報參數
                 unsubscribeSettings = onValue(ref(db, `stations/${currentStationId}/settings`), (snap) => {
                     if(snap.exists()) globalStationSettings = snap.val();
                 });
 
-                // 2. 監聽站務員派發的路線
-                unsubscribeRoutes = onValue(ref(db, `stations/${currentStationId}/routes`), (snap) => {
-                    if(snap.exists()) {
-                        const routes = snap.val();
-                        const select = document.getElementById('route-select'); 
-                        const currentVal = select.value; 
-                        select.innerHTML = '<option value="">-- 請選擇本站派發的路線 --</option>';
-                        routes.forEach(r => { const opt = document.createElement('option'); opt.value = r.id; opt.innerText = r.name; select.appendChild(opt); });
-                        if(currentVal) select.value = currentVal;
-                    }
-                });
-
-                // 3. 監聽站務員派發的新語音包 (自動下載魔法)
+                // 監聽站務員派發的自動語音包 (背景更新)
                 unsubscribeAudioConfig = onValue(ref(db, `stations/${currentStationId}/audio_config`), (snap) => {
                     if(snap.exists()) {
                         const cfg = snap.val();
                         const savedUrl = localStorage.getItem('remote_github_url');
                         if (cfg.url && cfg.token && cfg.url !== savedUrl) {
                             showToast("☁️ 偵測到新版語音包，開始自動同步...");
-                            syncGitHubAudio(cfg.url, cfg.token);
+                            // 自動同步時，強制清空舊檔
+                            syncGitHubAudio(cfg.url, cfg.token, true);
                         }
                     }
                 });
@@ -200,7 +211,6 @@
                 if(unsubscribeState) { unsubscribeState(); unsubscribeState = null; }
                 if(unsubscribeAudio) { unsubscribeAudio(); unsubscribeAudio = null; }
                 if(unsubscribeSettings) { unsubscribeSettings(); unsubscribeSettings = null; }
-                if(unsubscribeRoutes) { unsubscribeRoutes(); unsubscribeRoutes = null; }
                 if(unsubscribeAudioConfig) { unsubscribeAudioConfig(); unsubscribeAudioConfig = null; }
                 if(heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
             }
@@ -233,6 +243,7 @@
             }
         };
 
+        // ✨ 恢復：遙控器下拉選單直接聽命於主機真實的 RouteList ✨
         function listenToHostState() {
             unsubscribeState = onValue(ref(db, 'buses/' + currentBusId + '/state'), (snapshot) => {
                 const data = snapshot.val();
@@ -244,6 +255,20 @@
                     const pidsBtn = document.getElementById('btn-remote-pids');
                     if (data.isPidsRunning) { pidsBtn.innerText = "🛑 停止公車看板"; pidsBtn.classList.add('active'); } 
                     else { pidsBtn.innerText = "🚌 啟動公車看板"; pidsBtn.classList.remove('active'); }
+
+                    // 主機回報路線，遙控器直接同步選單
+                    if (data.routeList && Array.isArray(data.routeList)) {
+                        const select = document.getElementById('route-select'); 
+                        const currentVal = select.value; 
+                        select.innerHTML = '<option value="">-- 請選擇主機上的路線 --</option>';
+                        data.routeList.forEach(r => { 
+                            const opt = document.createElement('option'); 
+                            opt.value = r.id; 
+                            opt.innerText = r.name; 
+                            select.appendChild(opt); 
+                        });
+                        if(currentVal) select.value = currentVal;
+                    }
                 }
             });
         }
@@ -353,14 +378,25 @@
             if (announceId === pidsAnnounceId) window.pidsIsPlaying = false;
         }
 
-        // 全自動下載與清空引擎
-        window.syncGitHubAudio = async function(urlInput, tokenInput) {
+        // ✨ 恢復：手動匯入語音前，彈出視窗詢問是否清空 ✨
+        window.manualSyncGitHub = function() {
+            const urlInput = document.getElementById('gh-repo-url').value.trim(); 
+            const tokenInput = document.getElementById('gh-token').value.trim();
+            if (!urlInput || !tokenInput) { alert("請填寫專案連結與金鑰！"); return; }
+            
+            const shouldClear = confirm("是否清空目前所有音檔？\n\n(按「確定」將清空舊檔並重新下載)\n(按「取消」將直接覆蓋/新增入現有資料庫)");
+            
+            syncGitHubAudio(urlInput, tokenInput, shouldClear);
+        };
+
+        // 參數化的下載引擎 (支援手動/自動)
+        window.syncGitHubAudio = async function(urlInput, tokenInput, clearOld = true) {
             const match = urlInput.match(/github\.com\/([^\/]+)\/([^\/]+)/);
-            if (!match) return;
+            if (!match) { alert("專案連結格式錯誤！"); return; }
             const owner = match[1]; const repo = match[2].replace('.git', '');
             
             const overlay = document.getElementById('loading-overlay'); 
-            overlay.innerHTML = "☁️ 正在從後台同步最新語音包...<br><span style='font-size:14px; color:#555;'>請稍候，下載期間請勿關閉畫面</span>";
+            overlay.innerHTML = "☁️ 正在同步語音包...<br><span style='font-size:14px; color:#555;'>請稍候，下載期間請勿關閉畫面</span>";
             overlay.style.display = 'flex';
             
             try {
@@ -372,9 +408,11 @@
                 const zipBlob = await zipRes.blob(); let zip = await JSZip.loadAsync(zipBlob);
                 const folderMap = { '罐頭': 'common', '中文': 'zh', '英文': 'en', '台語': 'tw', '客語': 'hk' };
                 
-                // 下載前清空舊資料庫
-                await indexedDB.deleteDatabase("Remote_PIDS_Audio");
-                window.pidsAssets = { common: {}, zh: {}, en: {}, tw: {}, hk: {}, yue: {} };
+                // 如果需要清空舊檔
+                if (clearOld) {
+                    await indexedDB.deleteDatabase("Remote_PIDS_Audio");
+                    window.pidsAssets = { common: {}, zh: {}, en: {}, tw: {}, hk: {}, yue: {} };
+                }
 
                 let count = 0;
                 for (let path of Object.keys(zip.files)) {
@@ -391,7 +429,9 @@
                 
                 localStorage.setItem('remote_github_url', urlInput); 
                 localStorage.setItem('remote_github_token', tokenInput);
+                
                 alert(`✅ 語音包同步完成！共匯入 ${count} 個音檔。`);
+                document.getElementById('audio-modal').style.display='none';
             } catch(e) { 
                 alert("語音包同步失敗: " + e.message); 
             } finally { 
