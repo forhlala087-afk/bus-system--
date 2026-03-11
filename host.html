@@ -163,7 +163,7 @@
     <div id="stops-container"></div>
 
     <div class="bottom-bar">
-        <div class="options-container auth-only">
+        <div class="options-container">
             <label class="option-row"><input type="checkbox" id="chk-loop" onchange="saveGpsOptions()"><span>🔄 循環</span></label>
             <label class="option-row admin-only"><input type="checkbox" id="chk-seq" checked onchange="saveGpsOptions()"><span>🔢 依序</span></label>
             <label class="option-row admin-only"><span>進站核心:</span><input type="number" id="core-radius" value="60" style="width:40px;" onchange="saveGpsOptions()"><span>m</span></label>
@@ -471,6 +471,17 @@
                     }
                 });
                 
+// ✨ 魔法 3：監聽站務員派發的「語音包」自動下載 ✨
+                fbOnValueRef(fbRef(fbDb, `stations/${stationId}/audio_config`), (snap) => {
+                    if(snap.exists()) {
+                        const cfg = snap.val();
+                        const savedUrl = localStorage.getItem('gps_github_url');
+                        if (cfg.url && cfg.token && cfg.url !== savedUrl) {
+                            showToast("☁️ 偵測到雲端新資料包，開始自動同步...");
+                            window.syncGitHubAudio(cfg.url, cfg.token, true);
+                        }
+                    }
+                });              
                 pushStateToFirebase();
                 btnConnect.innerText = "✅ 雲端綁定成功";
                 btnConnect.style.background = "#27ae60";
@@ -615,31 +626,57 @@
             alert(`✅ 成功匯入 ${filesArray.length} 部輪播影片！\n站點命名為 [影片開始] 與 [影片結束] 即可自動觸發。`);
         }
 
-        window.syncGitHubAudio = async function() {
-            const urlInput = document.getElementById('gh-repo-url').value.trim(); const tokenInput = document.getElementById('gh-token').value.trim();
+        window.syncGitHubAudio = async function(urlParam, tokenParam, clearOld = true) {
+            // 支援從後台廣播傳入，或從介面手動抓取
+            const urlInput = urlParam || document.getElementById('gh-repo-url').value.trim(); 
+            const tokenInput = tokenParam || document.getElementById('gh-token').value.trim();
+            
             if (!urlInput || !tokenInput) { alert("請填寫專案連結與 Token！"); return; }
-            const match = urlInput.match(/github\.com\/([^\/]+)\/([^\/]+)/); if (!match) { alert("專案連結格式錯誤！"); return; }
-            const owner = match[1]; const repo = match[2].replace('.git', ''); localStorage.setItem('gps_github_url', urlInput); localStorage.setItem('gps_github_token', tokenInput);
-            loadingOverlay.style.display = 'flex'; loadingText.innerHTML = "正在尋找 audio.zip...";
+            const match = urlInput.match(/github\.com\/([^\/]+)\/([^\/]+)/); 
+            if (!match) { alert("專案連結格式錯誤！"); return; }
+            
+            const owner = match[1]; const repo = match[2].replace('.git', ''); 
+            localStorage.setItem('gps_github_url', urlInput); 
+            localStorage.setItem('gps_github_token', tokenInput);
+            
+            loadingOverlay.style.display = 'flex'; 
+            loadingText.innerHTML = "正在尋找 audio.zip...";
+            
             try {
-                const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/audio.zip`; const fileRes = await fetch(apiUrl, { headers: { 'Authorization': `token ${tokenInput}` } });
+                // 🚀 破解 GitHub 快取 (Cache Buster) 強迫下載最新版
+                const noCache = "?t=" + new Date().getTime();
+                const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/audio.zip${noCache}`; 
+                const fileRes = await fetch(apiUrl, { headers: { 'Authorization': `token ${tokenInput}` }, cache: 'no-store' });
+                
                 if (!fileRes.ok) throw new Error("找不到 audio.zip！");
-                const fileData = await fileRes.json(); loadingText.innerHTML = "正在高速下載 audio.zip...";
-                const zipRes = await fetch(fileData.url, { headers: { 'Authorization': `token ${tokenInput}`, 'Accept': 'application/vnd.github.v3.raw' } });
+                const fileData = await fileRes.json(); 
+                loadingText.innerHTML = "正在高速下載 audio.zip...";
+                
+                const zipRes = await fetch(fileData.url, { headers: { 'Authorization': `token ${tokenInput}`, 'Accept': 'application/vnd.github.v3.raw' }, cache: 'no-store' });
                 if (!zipRes.ok) throw new Error("ZIP 下載失敗");
+                
                 loadingText.innerHTML = "下載完成！解壓縮中...";
-                const zipBlob = await zipRes.blob(); let zip = await JSZip.loadAsync(zipBlob);
+                const zipBlob = await zipRes.blob(); 
+                let zip = await JSZip.loadAsync(zipBlob);
                 const folderMap = { '罐頭': 'common', 'common': 'common', '中文': 'zh', 'zh': 'zh', '英文': 'en', 'en': 'en', '台語': 'tw', 'tw': 'tw', '客語': 'hk', 'hk': 'hk', '粵語': 'yue', 'yue': 'yue' };
+                
                 let totalDownloaded = 0;
                 let playlistCount = 0;
                 
+                if (clearOld) {
+                    // 🛠️ 精準清空「主機端」的音效資料庫
+                    const db = await openPidsDB(); 
+                    const tx = db.transaction(PIDS_STORE_NAME, "readwrite"); 
+                    tx.objectStore(PIDS_STORE_NAME).clear();
+                    window.pidsAssets = { common: {}, zh: {}, en: {}, tw: {}, hk: {}, yue: {} };
+                }
                 window.playlistVideos = []; // 清空舊的輪播
                 
                 for (let path of Object.keys(zip.files)) {
-                    if (!zip.files[path].dir && !path.includes('__MACOSX')) {
+                    if (!zip.files[path].dir && !path.includes('__MACOSX') && !path.includes('.DS_Store')) {
                         let fileName = path.split('/').pop(); let sysFolder = null;
                         
-                        // ✨ 檢查是否為輪播影片 ✨
+                        // ✨ 恢復主機專屬的：擷取輪播影片 ✨
                         if (path.includes('影片輪播/') || path.includes('playlist/')) {
                             if (fileName.match(/\.(mp4|mov|webm|mkv)$/i)) {
                                 const b = await zip.files[path].async("blob");
@@ -653,7 +690,8 @@
                         if (sysFolder && fileName.match(/\.(mp3|wav|m4a|ogg|aac)$/i)) {
                             let audioBlob = await zip.files[path].async("blob");
                             window.pidsAssets[sysFolder][fileName] = URL.createObjectURL(audioBlob);
-                            await savePidsAudioToDB(sysFolder, fileName, audioBlob); totalDownloaded++;
+                            await savePidsAudioToDB(sysFolder, fileName, audioBlob); 
+                            totalDownloaded++;
                         }
                     }
                 }
@@ -663,8 +701,14 @@
                     window.playlistVideos.sort((a, b) => (parseInt(a.name) || 0) - (parseInt(b.name) || 0));
                 }
 
-                alert(`✅ 私密庫 ZIP 同步完成！\n共成功匯入 ${totalDownloaded} 個音檔。\n${playlistCount > 0 ? `匯入 ${playlistCount} 部輪播影片。` : ''}`);
-            } catch(e) { alert(`❌ 同步失敗！\n${e.message}`); } finally { loadingOverlay.style.display = 'none'; }
+                alert(`✅ 雲端同步完成！\n共成功匯入 ${totalDownloaded} 個音檔。\n${playlistCount > 0 ? `匯入 ${playlistCount} 部輪播影片。` : ''}`);
+                const modal = document.getElementById('audio-modal');
+                if (modal) modal.style.display = 'none';
+            } catch(e) { 
+                alert(`❌ 同步失敗！\n${e.message}`); 
+            } finally { 
+                loadingOverlay.style.display = 'none'; 
+            }
         };
 
         window.handleZipImport = async function(input) {
