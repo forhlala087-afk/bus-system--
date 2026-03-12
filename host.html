@@ -126,9 +126,22 @@
 
     /* 統一雙屏模式下的站名清單字體大小，讓未到站點跟當前站點一樣大 */
     /* 強制統一並縮小雙屏模式下的站名清單，避免未來站點字體爆開 */
+    /* --- 強制統一並設定雙屏模式的站名階層大小 --- */
     #pids-overlay.split-mode .stop-item-pids { height: 13vh !important; }
-    #pids-overlay.split-mode .stop-item-pids .stop-name-zh-pids { font-size: 4.5vh !important; line-height: 1.1 !important; margin-bottom: 2px !important; }
-    #pids-overlay.split-mode .stop-item-pids .stop-name-en-pids { font-size: 2.0vh !important; line-height: 1 !important; white-space: normal; word-break: break-word; }
+
+    /* 1. 已離站 (.past) - 最小，弱化視覺 */
+    #pids-overlay.split-mode .stop-item-pids.past .stop-name-zh-pids { font-size: 3.5vh !important; line-height: 1.1 !important; margin-bottom: 2px !important; }
+    #pids-overlay.split-mode .stop-item-pids.past .stop-name-en-pids { font-size: 1.2vh !important; line-height: 1 !important; white-space: normal; word-break: break-word; }
+
+    /* 2. 要前往的未來站 (.future) - 中等，清楚但不搶戲 */
+    #pids-overlay.split-mode .stop-item-pids.future .stop-name-zh-pids { font-size: 3.8vh !important; line-height: 1.1 !important; margin-bottom: 2px !important; }
+    #pids-overlay.split-mode .stop-item-pids.future .stop-name-en-pids { font-size: 1.4vh !important; line-height: 1 !important; white-space: normal; word-break: break-word; }
+
+    /* 3. 當前站 (.active) - 最大 (你要求的 4.5vh)，聚焦目前位置 */
+    #pids-overlay.split-mode .stop-item-pids.active .stop-name-zh-pids { font-size: 4.8vh !important; line-height: 1.1 !important; margin-bottom: 2px !important; }
+    #pids-overlay.split-mode .stop-item-pids.active .stop-name-en-pids { font-size: 1.8vh !important; line-height: 1 !important; white-space: normal; word-break: break-word; }
+    
+    /* 縮小當前站的紅點，避免擠出左邊界 */
     #pids-overlay.split-mode .stop-item-pids.active .dot-pids { width: 30px !important; height: 30px !important; box-shadow: 0 0 15px var(--highlight) !important; }
     
     #pids-overlay.split-mode .stop-item-pids.active .stop-name-zh-pids { font-size: 4.5vh; }
