@@ -124,13 +124,15 @@
     #pids-overlay.split-mode .graphic-col-pids { width: 40px; }
     #pids-overlay.split-mode .stop-item-pids { height: 13vh; } /* 縮小站距高度 */
 
-    /* 縮小未到站點的字體與行距 */
-    #pids-overlay.split-mode .stop-name-zh-pids { font-size: 2.8vh; line-height: 1.1; margin-bottom: 2px; }
-    #pids-overlay.split-mode .stop-name-en-pids { font-size: 1.4vh; line-height: 1; white-space: normal; word-break: break-word; }
-
-    /* 縮小「當前/抵達」站點的放大字體，避免擠爆 */
-    #pids-overlay.split-mode .stop-item-pids.active .stop-name-zh-pids { font-size: 4.5vh; line-height: 1.1; }
-    #pids-overlay.split-mode .stop-item-pids.active .stop-name-en-pids { font-size: 1.8vh; line-height: 1.1; }
+    /* 統一雙屏模式下的站名清單字體大小，讓未到站點跟當前站點一樣大 */
+    /* 強制統一並縮小雙屏模式下的站名清單，避免未來站點字體爆開 */
+    #pids-overlay.split-mode .stop-item-pids { height: 13vh !important; }
+    #pids-overlay.split-mode .stop-item-pids .stop-name-zh-pids { font-size: 3.5vh !important; line-height: 1.1 !important; margin-bottom: 2px !important; }
+    #pids-overlay.split-mode .stop-item-pids .stop-name-en-pids { font-size: 1.5vh !important; line-height: 1 !important; white-space: normal; word-break: break-word; }
+    #pids-overlay.split-mode .stop-item-pids.active .dot-pids { width: 30px !important; height: 30px !important; box-shadow: 0 0 15px var(--highlight) !important; }
+    
+    #pids-overlay.split-mode .stop-item-pids.active .stop-name-zh-pids { font-size: 4.5vh; }
+    #pids-overlay.split-mode .stop-item-pids.active .stop-name-en-pids { font-size: 1.8vh; }
 
     /* 縮小圓點大小 */
     #pids-overlay.split-mode .dot-pids { width: 20px; height: 20px; border-width: 3px; }
