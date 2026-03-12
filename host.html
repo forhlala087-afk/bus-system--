@@ -116,15 +116,28 @@
     /* 🌟🌟🌟 新增：完美雙屏模式 CSS (參考可口可樂圖排版) 🌟🌟🌟 */
     #pids-overlay.split-mode .pids-header { width: 100%; box-sizing: border-box; }
     #pids-overlay.split-mode .viewport-pids { width: 35vw; margin-left: 65vw; border-left: 2px solid rgba(255,255,255,0.2); box-sizing: border-box; }
-    #pids-overlay.split-mode .main-station { font-size: 8vh; padding: 0 10px; word-break: break-all;}
-    #pids-overlay.split-mode .sub-station { font-size: 3vh; }
-    #pids-overlay.split-mode .graphic-col-pids { width: 50px; }
-    #pids-overlay.split-mode .stop-name-zh-pids { font-size: 3.5vh; }
-    #pids-overlay.split-mode .stop-name-en-pids { font-size: 1.8vh; }
-    #pids-overlay.split-mode .route-container-pids { margin-left: 5vw; width: 90%; }
+    
+    /* 縮小右邊路線圖的整體比例與邊距 */
+    #pids-overlay.split-mode .route-container-pids { margin-left: 2vw; width: 95%; }
+    #pids-overlay.split-mode .graphic-col-pids { width: 40px; }
+    #pids-overlay.split-mode .stop-item-pids { height: 13vh; } /* 縮小站距高度 */
+
+    /* 縮小未到站點的字體與行距 */
+    #pids-overlay.split-mode .stop-name-zh-pids { font-size: 2.8vh; line-height: 1.1; margin-bottom: 2px; }
+    #pids-overlay.split-mode .stop-name-en-pids { font-size: 1.4vh; line-height: 1; white-space: normal; word-break: break-word; }
+
+    /* 縮小「當前/抵達」站點的放大字體，避免擠爆 */
+    #pids-overlay.split-mode .stop-item-pids.active .stop-name-zh-pids { font-size: 4.5vh; line-height: 1.1; }
+    #pids-overlay.split-mode .stop-item-pids.active .stop-name-en-pids { font-size: 1.8vh; line-height: 1.1; }
+
+    /* 縮小圓點大小 */
+    #pids-overlay.split-mode .dot-pids { width: 20px; height: 20px; border-width: 3px; }
+    #pids-overlay.split-mode .stop-item-pids.active .dot-pids { width: 35px; height: 35px; }
+
+    /* 影片區塊設定 */
     #video-overlay.split-mode { position: fixed; top: 14vh; left: 0; width: 65vw; height: 86vh; z-index: 20001; background: transparent; padding: 2vw; box-sizing: border-box; transition: all 0.5s ease-in-out; }
     #video-overlay.split-mode video { border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); background: #000; object-fit: contain; }
-    #pids-overlay.split-mode .btn-close-x { left: calc(65vw + 25px); }
+    #pids-overlay.split-mode .btn-close-x { left: calc(65vw + 20px); transform: scale(0.8); bottom: 15px; }
     #video-overlay.split-mode .btn-close-x, #video-overlay.split-mode .btn-fullscreen { display: none; }
     /* 🌟🌟🌟 雙屏 CSS 結束 🌟🌟🌟 */
 
