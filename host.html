@@ -10,7 +10,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1a1a1a">
 
-<title>GPS 導航 V168 (國道影片輪播版)</title>
+<title>GPS 導航 V168 (可口可樂雙屏版)</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -100,18 +100,34 @@
     #toast { visibility: hidden; min-width: 250px; background-color: rgba(0,0,0,0.8); color: #fff; text-align: center; border-radius: 50px; padding: 12px 20px; position: fixed; z-index: 99999; left: 50%; bottom: 120px; transform: translateX(-50%); font-size: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); backdrop-filter: blur(4px); } #toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } @keyframes fadein { from { bottom: 100px; opacity: 0; } to { bottom: 120px; opacity: 1; } } @keyframes fadeout { from { bottom: 120px; opacity: 1; } to { bottom: 100px; opacity: 0; } } @keyframes blink { 50% { opacity: 0.5; } }
 
-    #pids-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: #1a1a1a; z-index: 20000; flex-direction: column; --bg-color: #1a1a1a; --header-color: #0078d4; --text-main: #ffffff; --text-sub: #dddddd; --highlight: #e74c3c; --future: #ffffff; --dim: #555555; --track-width: 8px; --stop-height: 16vh; --graphic-col-width: 100px; --dot-small: 40px; --dot-large: 70px; font-family: "Microsoft JhengHei", sans-serif; }
-    #pids-overlay .pids-header { background-color: var(--header-color); height: 14vh; display: flex; align-items: center; justify-content: space-between; padding: 0 3vw; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 100; }
-    #pids-overlay .route-info-pids { font-size: 6vh; font-weight: 900; background: rgba(0,0,0,0.2); padding: 5px 25px; border-radius: 12px; min-width: 10vw; text-align: center; }
-    #pids-overlay .status-title-pids { font-size: 3.5vh; font-weight: bold; letter-spacing: 2px; text-align: center; }
+    #pids-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: #1a1a1a; z-index: 20000; flex-direction: column; --bg-color: #1a1a1a; --header-color: #0078d4; --text-main: #ffffff; --text-sub: #dddddd; --highlight: #e74c3c; --future: #ffffff; --dim: #555555; --track-width: 8px; --stop-height: 16vh; --graphic-col-width: 100px; --dot-small: 40px; --dot-large: 70px; font-family: "Microsoft JhengHei", sans-serif; transition: all 0.5s ease; }
+    #pids-overlay .pids-header { background-color: var(--header-color); height: 14vh; display: flex; align-items: center; justify-content: space-between; padding: 0 3vw; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 100; transition: all 0.5s ease; }
+    #pids-overlay .route-info-pids { font-size: 6vh; font-weight: 900; background: rgba(0,0,0,0.2); padding: 5px 25px; border-radius: 12px; min-width: 10vw; text-align: center; transition: all 0.5s ease; }
+    #pids-overlay .status-title-pids { font-size: 3.5vh; font-weight: bold; letter-spacing: 2px; text-align: center; transition: all 0.5s ease; }
     #pids-overlay .destination-group-pids { display: flex; align-items: center; gap: 15px; text-align: right; } #pids-overlay .arrow-icon-pids { font-size: 4vh; } #pids-overlay .dest-text-pids { display: flex; flex-direction: column; justify-content: center; } #pids-overlay .dest-zh-pids { font-size: 4vh; font-weight: bold; line-height: 1.2; } #pids-overlay .dest-en-pids { font-size: 2vh; opacity: 0.9; }
-    #pids-overlay .viewport-pids { position: relative; flex: 1; width: 100%; overflow: hidden; } #pids-overlay .page-pids { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.8s ease; pointer-events: none; background-color: var(--bg-color); } #pids-overlay .page-pids.active { opacity: 1; pointer-events: auto; }
-    #pids-overlay .main-station { font-size: 18vh; color: var(--text-main); margin-bottom: 2vh; font-weight: bold; text-align: center; } #pids-overlay .sub-station { font-size: 7vh; color: var(--text-sub); text-align: center; }
-    #pids-overlay .route-container-pids { width: 80%; position: relative; display: flex; flex-direction: column; margin-left: 10vw; } #pids-overlay .stop-item-pids { position: relative; display: flex; align-items: center; height: var(--stop-height); width: 100%; } #pids-overlay .graphic-col-pids { width: var(--graphic-col-width); height: 100%; position: relative; display: flex; justify-content: center; align-items: center; flex-shrink: 0; } #pids-overlay .track-line-pids { position: absolute; left: 50%; transform: translateX(-50%); top: -50%; height: 100%; width: var(--track-width); background-color: var(--dim); opacity: 0.3; } #pids-overlay .stop-item-pids:first-child .track-line-pids { display: none; } #pids-overlay .dot-pids { width: var(--dot-small); height: var(--dot-small); border-radius: 50%; background-color: var(--dim); border: 4px solid var(--bg-color); z-index: 2; box-sizing: border-box; }
-    #pids-overlay .stop-text-group-pids { margin-left: 30px; display: flex; flex-direction: column; text-align: left; } #pids-overlay .stop-name-zh-pids { font-size: 4.5vh; color: var(--dim); font-weight: bold; margin: 0; } #pids-overlay .stop-name-en-pids { font-size: 2.2vh; color: var(--dim); margin: 0; }
+    #pids-overlay .viewport-pids { position: relative; flex: 1; width: 100%; overflow: hidden; transition: all 0.5s ease; } #pids-overlay .page-pids { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.8s ease; pointer-events: none; background-color: var(--bg-color); } #pids-overlay .page-pids.active { opacity: 1; pointer-events: auto; }
+    #pids-overlay .main-station { font-size: 18vh; color: var(--text-main); margin-bottom: 2vh; font-weight: bold; text-align: center; transition: all 0.5s ease; } #pids-overlay .sub-station { font-size: 7vh; color: var(--text-sub); text-align: center; transition: all 0.5s ease; }
+    #pids-overlay .route-container-pids { width: 80%; position: relative; display: flex; flex-direction: column; margin-left: 10vw; transition: all 0.5s ease; } #pids-overlay .stop-item-pids { position: relative; display: flex; align-items: center; height: var(--stop-height); width: 100%; } #pids-overlay .graphic-col-pids { width: var(--graphic-col-width); height: 100%; position: relative; display: flex; justify-content: center; align-items: center; flex-shrink: 0; transition: all 0.5s ease; } #pids-overlay .track-line-pids { position: absolute; left: 50%; transform: translateX(-50%); top: -50%; height: 100%; width: var(--track-width); background-color: var(--dim); opacity: 0.3; } #pids-overlay .stop-item-pids:first-child .track-line-pids { display: none; } #pids-overlay .dot-pids { width: var(--dot-small); height: var(--dot-small); border-radius: 50%; background-color: var(--dim); border: 4px solid var(--bg-color); z-index: 2; box-sizing: border-box; }
+    #pids-overlay .stop-text-group-pids { margin-left: 30px; display: flex; flex-direction: column; text-align: left; } #pids-overlay .stop-name-zh-pids { font-size: 4.5vh; color: var(--dim); font-weight: bold; margin: 0; transition: all 0.5s ease; } #pids-overlay .stop-name-en-pids { font-size: 2.2vh; color: var(--dim); margin: 0; transition: all 0.5s ease; }
     #pids-overlay .stop-item-pids.past .dot-pids { opacity: 0.5; } #pids-overlay .stop-item-pids.past .stop-name-zh-pids { opacity: 0.5; } #pids-overlay .stop-item-pids.future .dot-pids { background-color: var(--future); box-shadow: 0 0 10px rgba(255,255,255,0.4); } #pids-overlay .stop-item-pids.future .stop-name-zh-pids { color: var(--future); font-size: 5.5vh; } #pids-overlay .stop-item-pids.future .stop-name-en-pids { color: var(--future); font-size: 2.8vh; }
     #pids-overlay .stop-item-pids.active { opacity: 1; } #pids-overlay .stop-item-pids.active .dot-pids { width: var(--dot-large); height: var(--dot-large); background-color: var(--highlight); box-shadow: 0 0 30px var(--highlight); border-width: 0; } #pids-overlay .stop-item-pids.active .stop-name-zh-pids { color: var(--highlight); font-size: 7vh; } #pids-overlay .stop-item-pids.active .stop-name-en-pids { color: var(--text-main); font-size: 3vh; }
     #pids-overlay .stop-item-pids.active.traveling .track-line-pids, #pids-overlay .stop-item-pids.active.arrived .track-line-pids { opacity: 1; background: repeating-linear-gradient(0deg, var(--highlight) 0px, var(--highlight) 20px, transparent 20px, transparent 40px); background-size: 100% 200%; } #pids-overlay .stop-item-pids.active.traveling .track-line-pids { animation: flowDownPids 1s linear infinite; } @keyframes flowDownPids { 0% { background-position: 0% 100%; } 100% { background-position: 0% 0%; } } #pids-overlay .stop-item-pids.active.traveling .dot-pids, #pids-overlay .stop-item-pids.active.arrived .dot-pids { animation: breathePids 2s infinite ease-in-out; } @keyframes breathePids { 0%, 100% { transform: scale(1); box-shadow: 0 0 30px var(--highlight); } 50% { transform: scale(1.1); box-shadow: 0 0 50px var(--highlight); } }
+    
+    /* 🌟🌟🌟 新增：完美雙屏模式 CSS (參考可口可樂圖排版) 🌟🌟🌟 */
+    #pids-overlay.split-mode .pids-header { width: 100%; box-sizing: border-box; }
+    #pids-overlay.split-mode .viewport-pids { width: 35vw; margin-left: 65vw; border-left: 2px solid rgba(255,255,255,0.2); box-sizing: border-box; }
+    #pids-overlay.split-mode .main-station { font-size: 8vh; padding: 0 10px; word-break: break-all;}
+    #pids-overlay.split-mode .sub-station { font-size: 3vh; }
+    #pids-overlay.split-mode .graphic-col-pids { width: 50px; }
+    #pids-overlay.split-mode .stop-name-zh-pids { font-size: 3.5vh; }
+    #pids-overlay.split-mode .stop-name-en-pids { font-size: 1.8vh; }
+    #pids-overlay.split-mode .route-container-pids { margin-left: 5vw; width: 90%; }
+    #video-overlay.split-mode { position: fixed; top: 14vh; left: 0; width: 65vw; height: 86vh; z-index: 20001; background: transparent; padding: 2vw; box-sizing: border-box; transition: all 0.5s ease-in-out; }
+    #video-overlay.split-mode video { border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); background: #000; object-fit: contain; }
+    #pids-overlay.split-mode .btn-close-x { left: calc(65vw + 25px); }
+    #video-overlay.split-mode .btn-close-x, #video-overlay.split-mode .btn-fullscreen { display: none; }
+    /* 🌟🌟🌟 雙屏 CSS 結束 🌟🌟🌟 */
+
     .pids-setting-item { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; background: #f8f9fa; padding: 10px; border-radius: 8px; border-left: 4px solid #ced4da; } .pids-zip-btn, .pids-audio-btn, .pids-manage-btn { color: white; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; border: none; } .pids-zip-btn { background: #8e44ad; } .pids-audio-btn { background: #2980b9; } .pids-manage-btn { background: #6c757d; } .pids-select, .lang-select { padding: 5px; border-radius: 4px; border: 1px solid #ccc; } .lang-select { width: 18%; } .pids-manual-overlay { position: absolute; bottom: 85px; right: 25px; z-index: 2147483647; background: rgba(0,0,0,0.6); border-radius: 8px; padding: 10px; display: none; gap: 10px; } .pids-manual-btn { background: #444; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; } .pids-clock { position: absolute; bottom: 25px; right: 25px; font-size: 3vh; font-weight: bold; color: rgba(255, 255, 255, 0.85); pointer-events: none; z-index: 2147483647; font-family: monospace; }
 
     .direction-tabs { display: flex; margin-bottom: 15px; background: #fff; border-radius: 12px; padding: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); } .dir-tab { flex: 1; padding: 12px; border: none; background: transparent; font-size: 16px; font-weight: bold; color: #666; border-radius: 8px; cursor: pointer; } .dir-tab.active { background: #007bff; color: white; box-shadow: 0 2px 5px rgba(0,123,255,0.3); } .dir-tab#tab-inbound.active { background: #e67e22; box-shadow: 0 2px 5px rgba(230,126,34,0.3); } .btn-load-dir { background: #f1f3f5; border: 1px solid #ced4da; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; color: #495057; font-size: 13px; flex: 1; } .btn-load-dir.out { color: #007bff; border-color: #007bff; background: #e6f2ff; } .btn-load-dir.in { color: #e67e22; border-color: #e67e22; background: #fdf2e9; }
@@ -471,7 +487,7 @@
                     }
                 });
                 
-// ✨ 魔法 3：監聽站務員派發的「語音包」自動下載 ✨
+                // ✨ 魔法 3：監聽站務員派發的「語音包」自動下載 ✨
                 fbOnValueRef(fbRef(fbDb, `stations/${stationId}/audio_config`), (snap) => {
                     if(snap.exists()) {
                         const cfg = snap.val();
@@ -777,7 +793,7 @@
         }
 
         function makeStop(id, zh, en, lat, lon, rad='150', t='', cp=false, wp=false, enb=true, mut=false, mg=false) {
-            return { id: id, nameZH: zh, nameEN: en, lat: lat, lon: lon, rad: rad, time: t, file: null, exitFile: null, triggered: false, enterTriggered: false, exitTriggered: false, coreEntered: false, anchorInvalidated: false, waitingForHeadingToCorrect: false, prevDistCur: undefined, prevDistNext: undefined, bothAwayTriggered: false, bgEnterTriggered: false, bgExitTriggered: false, bgCoreEntered: false, bgAnchorInvalidated: false, bgWaitingForHeadingToCorrect: false, bgBothAwayTriggered: false, dynamicInnerEntered: false, bgDynamicInnerEntered: false, mergedSkipped: mg, enabled: enb, muted: mut, isCheckpoint: cp, isWaypoint: wp, entryLat: null, entryLon: null, enterTime: 0, isZhinanFirst: false, isZhinanSecond: false };
+            return { id: id, nameZH: zh, nameEN: en, lat: lat, lon: lon, rad: rad, time: t, file: null, exitFile: null, triggered: false, enterTriggered: false, exitTriggered: false, coreEntered: false, anchorInvalidated: false, waitingForHeadingToCorrect: false, prevDistCur: undefined, prevDistNext: undefined, bothAwayTriggered: false, bgEnterTriggered: false, bgExitTriggered: false, bgCoreEntered: false, bgAnchorInvalidated: false, bgWaitingForHeadingToCorrect: false, bgBothAwayTriggered: false, dynamicInnerEntered: false, bgDynamicInnerEntered: false, mergedSkipped: mg, enabled: enb, muted: mut, isCheckpoint: cp, isWaypoint: wp, entryLat: null, entryLon: null, enterTime: 0, isZhinanFirst: false, isZhinanSecond: false, split: false };
         }
 
         function resetStopsState() {
@@ -996,7 +1012,7 @@
                 let targetRouteId = existingIndex !== -1 ? routes[existingIndex].id : Date.now().toString();
                 if (existingIndex !== -1) routes.splice(existingIndex, 1);
                 
-                const serialize = (sArray) => sArray.map(s => ({ nameZH: s.nameZH, nameEN: s.nameEN, lat: s.lat, lon: s.lon, rad: s.rad, time: s.time, enabled: s.enabled, muted: s.muted, isCheckpoint: s.isCheckpoint, isWaypoint: s.isWaypoint, file: "", exitFile: "" }));
+                const serialize = (sArray) => sArray.map(s => ({ nameZH: s.nameZH, nameEN: s.nameEN, lat: s.lat, lon: s.lon, rad: s.rad, time: s.time, enabled: s.enabled, muted: s.muted, isCheckpoint: s.isCheckpoint, isWaypoint: s.isWaypoint, split: s.split || false, file: "", exitFile: "" }));
                 const newRouteData = { id: targetRouteId, name: projName, timestamp: new Date().toLocaleString(), outbound: { ...window.projectData.outbound, stops: serialize(window.projectData.outbound.stops) }, inbound: { ...window.projectData.inbound, stops: serialize(window.projectData.inbound.stops) } };
                 routes.push(newRouteData); window.saveRoutesMetadata(routes); window.currentRouteId = targetRouteId; localStorage.setItem('gps_alarm_last_route_id', targetRouteId);
                 
@@ -1071,7 +1087,7 @@
 
         window.downloadConfigJson = function() {
             saveCurrentToProject();
-            const serialize = (sArray) => sArray.map(s => ({ nameZH: document.getElementById(`namezh-${s.id}`) ? document.getElementById(`namezh-${s.id}`).value : s.nameZH, nameEN: document.getElementById(`nameen-${s.id}`) ? document.getElementById(`nameen-${s.id}`).value : s.nameEN, file: s.file ? s.file.name : "", exitFile: s.exitFile ? s.exitFile.name : "", lat: document.getElementById(`lat-${s.id}`) ? document.getElementById(`lat-${s.id}`).value : s.lat, lon: document.getElementById(`lon-${s.id}`) ? document.getElementById(`lon-${s.id}`).value : s.lon, rad: document.getElementById(`rad-${s.id}`) ? document.getElementById(`rad-${s.id}`).value : s.rad, time: document.getElementById(`time-${s.id}`) ? document.getElementById(`time-${s.id}`).value : s.time, muted: s.muted, enabled: s.enabled, isCheckpoint: s.isCheckpoint, isWaypoint: s.isWaypoint }));
+            const serialize = (sArray) => sArray.map(s => ({ nameZH: document.getElementById(`namezh-${s.id}`) ? document.getElementById(`namezh-${s.id}`).value : s.nameZH, nameEN: document.getElementById(`nameen-${s.id}`) ? document.getElementById(`nameen-${s.id}`).value : s.nameEN, file: s.file ? s.file.name : "", exitFile: s.exitFile ? s.exitFile.name : "", lat: document.getElementById(`lat-${s.id}`) ? document.getElementById(`lat-${s.id}`).value : s.lat, lon: document.getElementById(`lon-${s.id}`) ? document.getElementById(`lon-${s.id}`).value : s.lon, rad: document.getElementById(`rad-${s.id}`) ? document.getElementById(`rad-${s.id}`).value : s.rad, time: document.getElementById(`time-${s.id}`) ? document.getElementById(`time-${s.id}`).value : s.time, muted: s.muted, enabled: s.enabled, isCheckpoint: s.isCheckpoint, isWaypoint: s.isWaypoint, split: s.split || false }));
             const dataToExport = serialize(window.projectData[window.currentDirection].stops);
             const blob = new Blob([JSON.stringify(dataToExport, null, 2)], {type: "application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = "config.json"; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
         }
@@ -1114,6 +1130,7 @@
         window.jumpStop = async function(currentIndex) { const targetStr = prompt(`將第 ${currentIndex + 1} 站移動到第幾站之前？(1-${window.stops.length})`); if (!targetStr) return; const targetNum = parseInt(targetStr); if (isNaN(targetNum) || targetNum < 1 || targetNum > window.stops.length || targetNum === currentIndex + 1) return; const targetIndex = targetNum - 1; const stopToMove = window.stops[currentIndex]; window.stops.splice(currentIndex, 1); window.stops.splice(targetIndex, 0, stopToMove); loadingOverlay.style.display = 'flex'; loadingText.innerText = "重整資料庫順序..."; for (let i = 0; i < window.stops.length; i++) { if (window.stops[i].file) await saveVideoToDB(window.currentRouteId, window.currentDirection, i, window.stops[i].file, 'enter'); if (window.stops[i].exitFile) await saveVideoToDB(window.currentRouteId, window.currentDirection, i, window.stops[i].exitFile, 'exit'); } loadingOverlay.style.display = 'none'; renderAllStops(); };
         window.toggleWaypoint = function(id) { const stop = window.stops.find(s => s.id === id); if (stop) { stop.isWaypoint = !stop.isWaypoint; renderAllStops(); } };
         window.toggleMute = function(id) { const stop = window.stops.find(s => s.id === id); if (stop) { stop.muted = !stop.muted; renderAllStops(); } };
+        window.toggleSplit = function(id) { const stop = window.stops.find(s => s.id === id); if (stop) { stop.split = !stop.split; renderAllStops(); } };
         window.toggleCheckpoint = function(id) { const stop = window.stops.find(s => s.id === id); if (stop) { stop.isCheckpoint = !stop.isCheckpoint; renderAllStops(); } };
         window.toggleStop = function(id) { const stop = window.stops.find(s => s.id === id); if (stop) { stop.enabled = !stop.enabled; renderAllStops(); } };
         window.addStop = async function() { window.stopCounter++; const id = window.stopCounter; window.stops.push(makeStop(window.stopCounter, `站點 ${window.stopCounter}`, `Stop ${window.stopCounter}`, '', '')); renderAllStops(); };
@@ -1134,7 +1151,7 @@
             if (nameZH.includes('[影片結束]')) msgHTML = `<div style="font-size:13px; color:#e84393; margin-top:5px; font-weight:bold;">🛑 此站將自動隱藏並停止輪播</div>`;
 
             const disableUp = index === 0 ? 'disabled' : ''; const disableDown = index === window.stops.length - 1 ? 'disabled' : '';
-            return `<div class="card ${cardClass}" id="card-${id}"><div class="card-body"><div class="header-top"><div><span style="font-weight:bold; font-size:18px; margin-right:5px;">第 ${index + 1} 站</span><div class="sort-controls admin-only"><button class="btn-sort" onclick="moveStop(${index}, -1)" ${disableUp}>▲</button><button class="btn-sort" onclick="moveStop(${index}, 1)" ${disableDown}>▼</button><button class="btn-sort jump" onclick="jumpStop(${index})">⤵</button></div></div><div class="switch-wrapper admin-only"><span class="switch-label" id="label-${id}" style="color:${statusColor}">${statusText}</span><label class="switch"><input type="checkbox" ${checkedAttr} onchange="toggleStop(${id})"><span class="slider"></span></label></div></div><div class="input-group" style="margin-bottom:10px;"><input type="text" id="namezh-${id}" value="${nameZH}" placeholder="中文站名" onchange="updateStopData(${id})"><input type="text" id="nameen-${id}" value="${nameEN}" placeholder="英文站名" onchange="updateStopData(${id})"></div><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;"><span id="dist-${id}" class="dist-text">-- m</span><div id="status-${id}" class="locked-msg">🔒 等待前一站...</div></div><div class="file-section admin-only" style="${hideFilesStyle}"><span class="file-label">📍 進入播放</span><input type="file" id="file-${id}" onchange="handleFileSelect(${id}, 'enter')"><div style="display:flex; align-items:center;"><button class="btn-select-file" id="btn-file-${id}" onclick="document.getElementById('file-${id}').click()" style="flex:1;">📂 選擇...</button><span class="dl-link" onclick="downloadTest(${id}, 'enter')">[📥]</span><span class="rm-link" onclick="clearVideo(${id}, 'enter')">[❌]</span></div></div><div class="file-section admin-only" style="${hideFilesStyle}"><span class="file-label">👋 離開播放</span><input type="file" id="file-exit-${id}" onchange="handleFileSelect(${id}, 'exit')"><div style="display:flex; align-items:center;"><button class="btn-select-file exit-file" id="btn-file-exit-${id}" onclick="document.getElementById('file-exit-${id}').click()" style="flex:1;">📂 選擇...</button><span class="dl-link" onclick="downloadTest(${id}, 'exit')">[📥]</span><span class="rm-link" onclick="clearVideo(${id}, 'exit')">[❌]</span></div></div>${msgHTML}<hr><div style="display:flex; gap:10px; margin-bottom:10px;"><div style="flex:1" class="admin-only"><div style="font-size:14px; font-weight:bold; color:#555; margin-bottom:5px;">⏰ 時間:</div><input type="time" id="time-${id}" value="${time}" onchange="updateStopData(${id})"></div><div style="flex:1" class="admin-only"><div style="font-size:14px; font-weight:bold; color:#555; margin-bottom:5px;">📍 半徑(m):</div><input type="number" id="rad-${id}" value="${rad}" onchange="updateStopData(${id})"></div></div><button class="btn-map admin-only" onclick="openMapPicker(${id})">🗺️ 地圖選點</button><div class="input-group admin-only"><input type="number" id="lat-${id}" value="${lat}" placeholder="緯度(Lat)" readonly style="background:#f5f5f5; color:#666"><input type="number" id="lon-${id}" value="${lon}" placeholder="經度(Lon)" readonly style="background:#f5f5f5; color:#666"></div><div id="debug-${id}" style="font-size:11px; color:#aaa; margin-top:5px; font-family:monospace;">等待啟動...</div></div><div class="card-footer"><label class="${waypointClass}"><input type="checkbox" ${waypointChecked} onchange="toggleWaypoint(${id})">📍 中繼站</label><label class="${checkpointClass}"><input type="checkbox" ${isCheckpoint ? 'checked' : ''} onchange="toggleCheckpoint(${id})">🏁 重啟點</label><label class="${muteClass}" style="${hideFilesStyle}"><input type="checkbox" ${muteChecked} onchange="toggleMute(${id})">🔇 靜音</label><button class="btn-delete admin-only" onclick="removeStop(${id})">🗑️ 刪除</button></div></div>`;
+            return `<div class="card ${cardClass}" id="card-${id}"><div class="card-body"><div class="header-top"><div><span style="font-weight:bold; font-size:18px; margin-right:5px;">第 ${index + 1} 站</span><div class="sort-controls admin-only"><button class="btn-sort" onclick="moveStop(${index}, -1)" ${disableUp}>▲</button><button class="btn-sort" onclick="moveStop(${index}, 1)" ${disableDown}>▼</button><button class="btn-sort jump" onclick="jumpStop(${index})">⤵</button></div></div><div class="switch-wrapper admin-only"><span class="switch-label" id="label-${id}" style="color:${statusColor}">${statusText}</span><label class="switch"><input type="checkbox" ${checkedAttr} onchange="toggleStop(${id})"><span class="slider"></span></label></div></div><div class="input-group" style="margin-bottom:10px;"><input type="text" id="namezh-${id}" value="${nameZH}" placeholder="中文站名" onchange="updateStopData(${id})"><input type="text" id="nameen-${id}" value="${nameEN}" placeholder="英文站名" onchange="updateStopData(${id})"></div><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;"><span id="dist-${id}" class="dist-text">-- m</span><div id="status-${id}" class="locked-msg">🔒 等待前一站...</div></div><div class="file-section admin-only" style="${hideFilesStyle}"><span class="file-label">📍 進入播放</span><input type="file" id="file-${id}" onchange="handleFileSelect(${id}, 'enter')"><div style="display:flex; align-items:center;"><button class="btn-select-file" id="btn-file-${id}" onclick="document.getElementById('file-${id}').click()" style="flex:1;">📂 選擇...</button><span class="dl-link" onclick="downloadTest(${id}, 'enter')">[📥]</span><span class="rm-link" onclick="clearVideo(${id}, 'enter')">[❌]</span></div></div><div class="file-section admin-only" style="${hideFilesStyle}"><span class="file-label">👋 離開播放</span><input type="file" id="file-exit-${id}" onchange="handleFileSelect(${id}, 'exit')"><div style="display:flex; align-items:center;"><button class="btn-select-file exit-file" id="btn-file-exit-${id}" onclick="document.getElementById('file-exit-${id}').click()" style="flex:1;">📂 選擇...</button><span class="dl-link" onclick="downloadTest(${id}, 'exit')">[📥]</span><span class="rm-link" onclick="clearVideo(${id}, 'exit')">[❌]</span></div></div>${msgHTML}<hr><div style="display:flex; gap:10px; margin-bottom:10px;"><div style="flex:1" class="admin-only"><div style="font-size:14px; font-weight:bold; color:#555; margin-bottom:5px;">⏰ 時間:</div><input type="time" id="time-${id}" value="${time}" onchange="updateStopData(${id})"></div><div style="flex:1" class="admin-only"><div style="font-size:14px; font-weight:bold; color:#555; margin-bottom:5px;">📍 半徑(m):</div><input type="number" id="rad-${id}" value="${rad}" onchange="updateStopData(${id})"></div></div><button class="btn-map admin-only" onclick="openMapPicker(${id})">🗺️ 地圖選點</button><div class="input-group admin-only"><input type="number" id="lat-${id}" value="${lat}" placeholder="緯度(Lat)" readonly style="background:#f5f5f5; color:#666"><input type="number" id="lon-${id}" value="${lon}" placeholder="經度(Lon)" readonly style="background:#f5f5f5; color:#666"></div><div id="debug-${id}" style="font-size:11px; color:#aaa; margin-top:5px; font-family:monospace;">等待啟動...</div></div><div class="card-footer"><label class="${waypointClass}"><input type="checkbox" ${waypointChecked} onchange="toggleWaypoint(${id})">📍 中繼站</label><label class="${checkpointClass}"><input type="checkbox" ${isCheckpoint ? 'checked' : ''} onchange="toggleCheckpoint(${id})">🏁 重啟點</label><label class="${muteClass}" style="${hideFilesStyle}"><input type="checkbox" ${muteChecked} onchange="toggleMute(${id})">🔇 靜音</label><label class="action-pill admin-only" style="${hideFilesStyle}"><input type="checkbox" ${stop.split ? 'checked' : ''} onchange="toggleSplit(${id})">🌓 雙屏</label><button class="btn-delete admin-only" onclick="removeStop(${id})">🗑️ 刪除</button></div></div>`;
         }
 
         window.handleFileSelect = async function(id, type) { const inputId = type === 'enter' ? 'file-' + id : 'file-exit-' + id; const input = document.getElementById(inputId); if (input.files.length > 0) { const file = input.files[0]; const stopIndex = window.stops.findIndex(s => s.id === id); if (stopIndex !== -1) { if (type === 'enter') window.stops[stopIndex].file = file; else window.stops[stopIndex].exitFile = file; await saveVideoToDB(window.currentRouteId, window.currentDirection, stopIndex, file, type); updateFileUI(id, file, type); } } }
@@ -1159,7 +1176,7 @@
             const sharedRouteName = document.getElementById('save-route-name').value.trim() || "---"; window.projectData.outbound.routeName = sharedRouteName; window.projectData.inbound.routeName = sharedRouteName; window.projectData.outbound.destZH = document.getElementById('save-out-zh').value.trim() || "---"; window.projectData.outbound.destEN = document.getElementById('save-out-en').value.trim() || "---"; window.projectData.inbound.destZH = document.getElementById('save-in-zh').value.trim() || "---"; window.projectData.inbound.destEN = document.getElementById('save-in-en').value.trim() || "---";
             if(window.currentDirection === 'outbound') { window.routeName = window.projectData.outbound.routeName; window.destZH = window.projectData.outbound.destZH; window.destEN = window.projectData.outbound.destEN; } else { window.routeName = window.projectData.inbound.routeName; window.destZH = window.projectData.inbound.destZH; window.destEN = window.projectData.inbound.destEN; }
             updateTabLabels();
-            const serialize = (sArray) => sArray.map(s => ({ nameZH: s.nameZH, nameEN: s.nameEN, lat: s.lat, lon: s.lon, rad: s.rad, time: s.time, enabled: s.enabled, muted: s.muted, isCheckpoint: s.isCheckpoint, isWaypoint: s.isWaypoint, file: s.file ? s.file.name : "", exitFile: s.exitFile ? s.exitFile.name : "" }));
+            const serialize = (sArray) => sArray.map(s => ({ nameZH: s.nameZH, nameEN: s.nameEN, lat: s.lat, lon: s.lon, rad: s.rad, time: s.time, enabled: s.enabled, muted: s.muted, isCheckpoint: s.isCheckpoint, isWaypoint: s.isWaypoint, split: s.split || false, file: s.file ? s.file.name : "", exitFile: s.exitFile ? s.exitFile.name : "" }));
             const newRoute = { id: targetRouteId, name: rn, timestamp: new Date().toLocaleString(), outbound: { ...window.projectData.outbound, stops: serialize(window.projectData.outbound.stops) }, inbound: { ...window.projectData.inbound, stops: serialize(window.projectData.inbound.stops) } };
             for (let i = 0; i < window.projectData.outbound.stops.length; i++) { let s = window.projectData.outbound.stops[i]; if (s.file) await saveVideoToDB(targetRouteId, 'outbound', i, s.file, 'enter'); if (s.exitFile) await saveVideoToDB(targetRouteId, 'outbound', i, s.exitFile, 'exit'); }
             for (let i = 0; i < window.projectData.inbound.stops.length; i++) { let s = window.projectData.inbound.stops[i]; if (s.file) await saveVideoToDB(targetRouteId, 'inbound', i, s.file, 'enter'); if (s.exitFile) await saveVideoToDB(targetRouteId, 'inbound', i, s.exitFile, 'exit'); }
@@ -1175,7 +1192,7 @@
             
             if(!isSilent) { loadingOverlay.style.display = 'flex'; loadingText.innerText = "載入中..."; }
             window.currentRouteId = route.id; localStorage.setItem('gps_alarm_last_route_id', window.currentRouteId); 
-            const restore = async (sArray, dir) => { let res = []; for(let i=0; i<sArray.length; i++) { const sData = sArray[i]; const file = await getVideoFromDB(window.currentRouteId, dir, i, 'enter'); const exitFile = await getVideoFromDB(window.currentRouteId, dir, i, 'exit'); res.push({ ...sData, file: file, exitFile: exitFile, triggered: false, enterTriggered: false, exitTriggered: false, coreEntered: false, anchorInvalidated: false, waitingForHeadingToCorrect: false, prevDistCur: undefined, prevDistNext: undefined, bothAwayTriggered: false, bgEnterTriggered: false, bgExitTriggered: false, bgCoreEntered: false, bgAnchorInvalidated: false, bgWaitingForHeadingToCorrect: false, bgBothAwayTriggered: false, dynamicInnerEntered: false, bgDynamicInnerEntered: false, mergedSkipped: false, entryLat: null, entryLon: null, enterTime: 0, isZhinanFirst: false, isZhinanSecond: false, id: i+1 }); } return res; };
+            const restore = async (sArray, dir) => { let res = []; for(let i=0; i<sArray.length; i++) { const sData = sArray[i]; const file = await getVideoFromDB(window.currentRouteId, dir, i, 'enter'); const exitFile = await getVideoFromDB(window.currentRouteId, dir, i, 'exit'); res.push({ ...sData, file: file, exitFile: exitFile, triggered: false, enterTriggered: false, exitTriggered: false, coreEntered: false, anchorInvalidated: false, waitingForHeadingToCorrect: false, prevDistCur: undefined, prevDistNext: undefined, bothAwayTriggered: false, bgEnterTriggered: false, bgExitTriggered: false, bgCoreEntered: false, bgAnchorInvalidated: false, bgWaitingForHeadingToCorrect: false, bgBothAwayTriggered: false, dynamicInnerEntered: false, bgDynamicInnerEntered: false, mergedSkipped: false, entryLat: null, entryLon: null, enterTime: 0, isZhinanFirst: false, isZhinanSecond: false, split: sData.split || false, id: i+1 }); } return res; };
             window.projectData.outbound = { ...route.outbound, stops: await restore(route.outbound.stops, 'outbound') }; window.projectData.inbound = { ...route.inbound, stops: await restore(route.inbound.stops, 'inbound') };
             loadFromProject(startDirection); 
             if(!isSilent) { loadingOverlay.style.display = 'none'; closeRouteList(); setTimeout(() => alert(`✅ 載入完成`), 200); }
@@ -1272,6 +1289,8 @@
             if (watchId !== null) navigator.geolocation.clearWatch(watchId); if (checkIntervalId !== null) clearInterval(checkIntervalId); if (wakeLock !== null) { wakeLock.release().then(() => { wakeLock = null; }); } 
             window.isTrackingVideo = false; window.isTrackingPIDS = false; btnVideo.innerText = "🚀 啟動影片導航"; btnVideo.classList.remove('stop'); btnVideo.style.display = 'block'; btnPIDS.innerText = "🚌 啟動公車看板"; btnPIDS.classList.remove('stop'); btnPIDS.style.display = 'block'; elHeartbeat.innerHTML = '<span class="stopped">已停止</span>'; 
             window.stopPlaylist(); // ✨ 確保停止時也關閉輪播
+            window.closeSplitScreen(); 
+            window.closeVideo();
             
             document.querySelectorAll('.card').forEach(c => { c.classList.remove('active', 'active-exit', 'locked', 'passed', 'waiting'); c.querySelector('.locked-msg').style.display = 'none'; });
             pidsOverlay.style.display = 'none'; document.body.style.overflow = 'auto'; stopPidsCycle(); if (pidsClockInterval) { clearInterval(pidsClockInterval); pidsClockInterval = null; }
@@ -1372,6 +1391,7 @@
         function checkDist(stop, curLat, curLon, index, expectedNextIdx, hasTriggeredAnyGlobal, closestValidStopIdx) { 
             if (!stop.enabled || stop.mergedSkipped) return; 
             if (window.isSeqMode && index < currentMaxIndex) { document.getElementById('dist-' + stop.id).innerText = "Pass"; document.getElementById('card-' + stop.id).classList.add('passed'); return; }
+            if (window.isSeqMode && !hasTriggeredAnyGlobal && window._requireStrictStartIdx === -1 && closestValidStopIdx !== -1 && index !== closestValidStopIdx) return;
             if (window.isSeqMode && !hasTriggeredAnyGlobal && window._requireStrictStartIdx === -1 && closestValidStopIdx !== -1 && index !== closestValidStopIdx) return;
 
             const latVal = stop.lat; const lonVal = stop.lon; if (!latVal || !lonVal) return; 
@@ -1541,8 +1561,12 @@
                             window.pidsCurrentIndex = nextPidsIdx; window.isNextStopMode = true; document.getElementById('status-text-pids').innerText = "下一站 | Next Stop"; updatePidsDisplay(); triggerPidsAnnouncement(window.pidsCurrentIndex, 'next');
                         }
                     } else {
-                        if (window.isTrackingVideo && stop.file) { playVideo(stop.id, stop.file, stop.muted); }
-                        if (window.isTrackingPIDS) { window.pidsCurrentIndex = index; window.isNextStopMode = false; document.getElementById('status-text-pids').innerText = "即將抵達 | Arriving"; window.updatePidsDisplay(); triggerPidsAnnouncement(window.pidsCurrentIndex, 'arr'); }
+                        if (window.isTrackingVideo && stop.file && !stop.split) { playVideo(stop.id, stop.file, stop.muted); }
+                        if (window.isTrackingPIDS) { 
+                            if (stop.split && stop.file) { window.playSplitScreen(stop.id, stop.file, stop.muted); }
+                            else { window.closeSplitScreen(); } // 💡 沒設定進入影片就收起雙屏
+                            window.pidsCurrentIndex = index; window.isNextStopMode = false; document.getElementById('status-text-pids').innerText = "即將抵達 | Arriving"; window.updatePidsDisplay(); triggerPidsAnnouncement(window.pidsCurrentIndex, 'arr'); 
+                        }
                     }
                 }
             } 
@@ -1612,7 +1636,29 @@
                 
                 if (isLeaving) {
                     stop.exitTriggered = true; lastGlobalExitTime = Date.now(); lastStationActivityTime = Date.now();
-                    if (window.isTrackingVideo) { if (stop.exitFile) { playVideo(stop.id, stop.exitFile, stop.muted); document.getElementById(`card-${stop.id}`).classList.remove('active'); document.getElementById(`card-${stop.id}`).classList.add('active-exit'); } else { if (!isStickyLoop && !window.isSeqMode) { if(currentPlayingId === stop.id) { closeVideo(); document.getElementById(`card-${stop.id}`).classList.remove('active'); } } } }
+                    
+                    if (window.isTrackingVideo) { 
+                        if (stop.exitFile) { 
+                            playVideo(stop.id, stop.exitFile, stop.muted); 
+                            document.getElementById(`card-${stop.id}`).classList.remove('active'); 
+                            document.getElementById(`card-${stop.id}`).classList.add('active-exit'); 
+                        } else { 
+                            if (!isStickyLoop && !window.isSeqMode) { 
+                                if(currentPlayingId === stop.id) { closeVideo(); document.getElementById(`card-${stop.id}`).classList.remove('active'); } 
+                            } 
+                        } 
+                    }
+                    
+                    // 💡 離站時，判斷是否播放離開影片
+                    // 💡 離站時，判斷是否播放離開影片
+                    if (window.isTrackingPIDS) {
+                        if (stop.split && stop.exitFile) { 
+                            window.playSplitScreen(stop.id, stop.exitFile, stop.muted); 
+                        } else { 
+                            window.closeSplitScreen(); 
+                        }
+                    }
+                    
                     saveCurrentToProject();
 
                     if (!stop.nameZH.includes('[影片開始]') && !stop.nameZH.includes('[影片結束]')) {
@@ -1668,6 +1714,26 @@
         window.stopPlaylist = function() {
             if (window._isPlaylistPlaying) { window._isPlaylistPlaying = false; closeVideo(); }
         }
+
+        window.playSplitScreen = function(id, file, startMuted) { 
+            currentPlayingId = id; 
+            videoOverlay.classList.add('split-mode'); 
+            pidsOverlay.classList.add('split-mode'); 
+            videoOverlay.style.display = "flex"; 
+            const url = URL.createObjectURL(file); 
+            video.src = url; 
+            video.muted = startMuted; 
+            video.loop = true; // ✨ 讓站點廣告無限循環
+            video.volume = window._globalVolume * 0.3; 
+            video.play().catch(e => { video.muted = true; video.play(); }); 
+        };
+        window.closeSplitScreen = function() { 
+            videoOverlay.classList.remove('split-mode'); 
+            pidsOverlay.classList.remove('split-mode'); 
+            video.pause(); video.loop = false; // 恢復
+            videoOverlay.style.display = "none"; video.src = ""; 
+            currentPlayingId = null;
+        };
 
         function playVideo(id, file, startMuted) { window._isPlaylistPlaying = false; isStickyLoop = false; currentPlayingId = id; videoOverlay.style.display = "flex"; errorMsg.style.display = "none"; const url = URL.createObjectURL(file); video.src = url; attemptFullscreen(); video.muted = startMuted ? true : false; video.volume = window._globalVolume; video.onended = function() { video.muted = true; video.play(); }; video.onerror = function() { errorMsg.style.display = "block"; }; var playPromise = video.play(); if (playPromise !== undefined) { playPromise.catch(error => { video.muted = true; video.play(); }); } }
         window.closeVideo = function() { exitFullscreen(); video.pause(); video.onended = null; videoOverlay.style.display = "none"; video.src = ""; currentPlayingId = null; };
@@ -1858,8 +1924,22 @@
             pidsIsShowingMap = false; const pageNext = document.getElementById('page-next-stop-pids'); const pageMap = document.getElementById('page-route-map-pids');
             if(pageNext) { pageNext.classList.add('active'); pageNext.style.opacity = '1'; pageNext.style.pointerEvents = 'auto'; }
             if(pageMap) { pageMap.classList.remove('active'); pageMap.style.opacity = '0'; pageMap.style.pointerEvents = 'none'; }
-            if (window.isNextStopMode) { window.isNextStopMode = false; document.getElementById('status-text-pids').innerText = "即將抵達 | Arriving"; window.updatePidsDisplay(); triggerPidsAnnouncement(window.pidsCurrentIndex, 'arr'); } 
+            
+            if (window.isNextStopMode) { 
+                window.isNextStopMode = false; document.getElementById('status-text-pids').innerText = "即將抵達 | Arriving"; 
+                const s = window.stops[window.pidsCurrentIndex];
+                if (s && s.split && s.file) { window.playSplitScreen(s.id, s.file, s.muted); } 
+                else { window.closeSplitScreen(); } // 💡 沒設定進入影片就收起雙屏
+                window.updatePidsDisplay(); triggerPidsAnnouncement(window.pidsCurrentIndex, 'arr'); 
+            } 
             else {
+                const currentStop = window.stops[window.pidsCurrentIndex];
+                if (currentStop && currentStop.split && currentStop.exitFile) { 
+                    window.playSplitScreen(currentStop.id, currentStop.exitFile, currentStop.muted); 
+                } else { 
+                    window.closeSplitScreen(); // 💡 沒設定離開影片就收起雙屏 
+                }
+                
                 let nextIdx = -1; for(let i = window.pidsCurrentIndex + 1; i < window.stops.length; i++) { if (isPidsValid(window.stops[i])) { nextIdx = i; break; } }
                 if (nextIdx !== -1) { window.pidsCurrentIndex = nextIdx; window.isNextStopMode = true; document.getElementById('status-text-pids').innerText = "下一站 | Next Stop"; window.updatePidsDisplay(); triggerPidsAnnouncement(window.pidsCurrentIndex, 'next'); } 
                 else {
