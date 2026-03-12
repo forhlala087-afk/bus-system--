@@ -184,10 +184,11 @@
         <button id="tab-inbound" class="dir-tab" onclick="switchDirection('inbound')">⚪ 返程</button>
     </div>
 
-    <div class="auth-only" style="display:flex; gap:10px; margin-bottom:10px;">
-        <button class="btn-zip" onclick="document.getElementById('zip-input').click()" style="flex:1;">📦 大補包</button>
+    <div class="auth-only" style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+        <button class="btn-zip" onclick="document.getElementById('zip-input').click()" style="flex:1; min-width:90px;">📦 手動大補包</button>
         <input type="file" id="playlist-input" accept="video/*" multiple style="display:none" onchange="handlePlaylistImport(this)">
-        <button class="btn-zip" style="background:#e84393; flex:1;" onclick="document.getElementById('playlist-input').click()">🎬 輪播影片</button>
+        <button class="btn-zip" style="background:#e84393; flex:1; min-width:90px;" onclick="document.getElementById('playlist-input').click()">🎬 輪播影片</button>
+        <button class="btn-zip" style="background:#0288d1; flex:1; min-width:120px;" onclick="syncGitHubVideo()">☁️ 雲端同步影片包</button>
         
         <button class="btn-csv admin-only" onclick="document.getElementById('csv-input').click()" style="flex:1;">📄 CSV</button>
         <button class="btn-tdx" onclick="openTdxModal()" style="flex:2;">🌐 TDX</button>
@@ -527,7 +528,18 @@
                             window.syncGitHubAudio(cfg.url, cfg.token, true);
                         }
                     }
-                });              
+                });
+              // ✨ 魔法 4：監聽站務員派發的「影片包」自動下載 ✨
+                fbOnValueRef(fbRef(fbDb, `stations/${stationId}/video_config`), (snap) => {
+                    if(snap.exists()) {
+                        const cfg = snap.val();
+                        const savedUrl = localStorage.getItem('gps_github_video_url');
+                        if (cfg.url && cfg.token && cfg.url !== savedUrl) {
+                            showToast("☁️ 偵測到雲端新影片包，開始自動同步...");
+                            window.syncGitHubVideo(cfg.url, cfg.token);
+                        }
+                    }
+                });
                 pushStateToFirebase();
                 btnConnect.innerText = "✅ 雲端綁定成功";
                 btnConnect.style.background = "#27ae60";
@@ -672,6 +684,105 @@
             alert(`✅ 成功匯入 ${filesArray.length} 部輪播影片！\n站點命名為 [影片開始] 與 [影片結束] 即可自動觸發。`);
         }
 
+      // 🎬 雲端全自動：下載影片包、解壓縮、配對站點並存入資料庫
+        window.syncGitHubVideo = async function(urlParam, tokenParam) {
+            const urlInput = urlParam || prompt("請輸入 GitHub 影片包專案連結\n(例: https://github.com/User/video-repo)");
+            const tokenInput = tokenParam || prompt("請輸入 GitHub 金鑰 (ghp_...)");
+            if (!urlInput || !tokenInput) return;
+
+            const match = urlInput.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+            if (!match) { alert("專案連結格式錯誤！"); return; }
+            const owner = match[1]; const repo = match[2].replace('.git', '');
+
+            loadingOverlay.style.display = 'flex';
+            loadingText.innerHTML = "正在尋找 video.zip...<br><span style='font-size:14px;'>檔案龐大，下載期間請保持螢幕常亮！</span>";
+
+            try {
+                const noCache = "?t=" + new Date().getTime();
+                const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/video.zip${noCache}`;
+                const fileRes = await fetch(apiUrl, { headers: { 'Authorization': `token ${tokenInput}` }, cache: 'no-store' });
+                if (!fileRes.ok) throw new Error("找不到 video.zip！請確認專案根目錄有此檔案。");
+                const fileData = await fileRes.json();
+
+                loadingText.innerHTML = "正在高速下載影片包...<br><span style='font-size:14px;'>(根據網路速度，可能需要數分鐘)</span>";
+                const zipRes = await fetch(fileData.url, { headers: { 'Authorization': `token ${tokenInput}`, 'Accept': 'application/vnd.github.v3.raw' }, cache: 'no-store' });
+                if (!zipRes.ok) throw new Error("ZIP 下載失敗");
+
+                loadingText.innerHTML = "下載完成！解壓縮與對號入座中...";
+                const zipBlob = await zipRes.blob();
+                let zip = await JSZip.loadAsync(zipBlob);
+
+                window.playlistVideos = []; // 清空舊的輪播
+                let playlistCount = 0;
+                let matchedCount = 0;
+
+                // 取得目前系統內已存的所有路線，用來「看檔名」對號入座
+                let routes = window.getSavedRoutes();
+
+                for (let path of Object.keys(zip.files)) {
+                    if (zip.files[path].dir || path.includes('__MACOSX') || path.includes('.DS_Store')) continue;
+
+                    let fileName = path.split('/').pop();
+
+                    // 1. 抓取輪播影片
+                    if (path.includes('影片輪播/') || path.includes('playlist/')) {
+                        if (fileName.match(/\.(mp4|mov|webm|mkv)$/i)) {
+                            const b = await zip.files[path].async("blob");
+                            const mime = getMimeType(fileName);
+                            const fileObj = new File([new Blob([b], {type: mime})], fileName, { type: mime });
+                            window.playlistVideos.push({ name: fileName, url: URL.createObjectURL(b), file: fileObj });
+                            playlistCount++;
+                        }
+                        continue;
+                    }
+
+                    // 2. 抓取進/出站點影片，並與 JSON 路線配對
+                    if (fileName.match(/\.(mp4|mov|webm|mkv)$/i)) {
+                        const b = await zip.files[path].async("blob");
+                        const mime = getMimeType(fileName);
+                        const fileObj = new File([new Blob([b], {type: mime})], fileName, { type: mime });
+
+                        let matched = false;
+                        for (let r of routes) {
+                            if (r.outbound && r.outbound.stops) {
+                                for (let i = 0; i < r.outbound.stops.length; i++) {
+                                    let s = r.outbound.stops[i];
+                                    if (s.file === fileName) { await saveVideoToDB(r.id, 'outbound', i, fileObj, 'enter'); matched = true; }
+                                    if (s.exitFile === fileName) { await saveVideoToDB(r.id, 'outbound', i, fileObj, 'exit'); matched = true; }
+                                }
+                            }
+                            if (r.inbound && r.inbound.stops) {
+                                for (let i = 0; i < r.inbound.stops.length; i++) {
+                                    let s = r.inbound.stops[i];
+                                    if (s.file === fileName) { await saveVideoToDB(r.id, 'inbound', i, fileObj, 'enter'); matched = true; }
+                                    if (s.exitFile === fileName) { await saveVideoToDB(r.id, 'inbound', i, fileObj, 'exit'); matched = true; }
+                                }
+                            }
+                        }
+                        if (matched) matchedCount++;
+                    }
+                }
+
+                if (window.playlistVideos.length > 0) {
+                    window.playlistVideos.sort((a, b) => (parseInt(a.name) || 0) - (parseInt(b.name) || 0));
+                }
+
+                // 如果畫面目前正在顯示某條路線，強制重新載入，讓剛配對好的影片顯示出來
+                if (window.currentRouteId && window.currentRouteId !== "temp") {
+                    window.loadRoute(window.currentRouteId, window.currentDirection, true);
+                }
+
+                alert(`✅ 雲端影片包同步完成！\n成功對號入座 ${matchedCount} 支站點影片。\n載入 ${playlistCount} 支輪播影片。`);
+                
+                localStorage.setItem('gps_github_video_url', urlInput);
+                localStorage.setItem('gps_github_video_token', tokenInput);
+
+            } catch(e) {
+                alert(`❌ 同步失敗！\n${e.message}`);
+            } finally {
+                loadingOverlay.style.display = 'none';
+            }
+        };
         window.syncGitHubAudio = async function(urlParam, tokenParam, clearOld = true) {
             // 支援從後台廣播傳入，或從介面手動抓取
             const urlInput = urlParam || document.getElementById('gh-repo-url').value.trim(); 
