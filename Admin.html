@@ -126,6 +126,13 @@
             <input type="password" id="set-gh-token" class="input-field" placeholder="GitHub 金鑰 (ghp_...)">
             <button class="btn" style="background:#2980b9;" onclick="saveAudioConfig()">🚀 儲存並強制派發語音</button>
         </div>
+      <div class="card" style="border-top-color: #e84393;">
+            <h2>🎬 5. 全站影片包派發 (一鍵同步)</h2>
+            <p style="font-size: 14px; color: #666;">設定 GitHub 影片包來源 (根目錄需有 <b>video.zip</b>)。儲存後，主機會出現雲端同步按鈕，司機點擊即可全自動下載解壓！</p>
+            <input type="text" id="set-gh-video-url" class="input-field" placeholder="GitHub 影片專案連結 (例: https://github.com/...)">
+            <input type="password" id="set-gh-video-token" class="input-field" placeholder="GitHub 金鑰 (ghp_...)">
+            <button class="btn" style="background:#e84393;" onclick="saveVideoConfig()">🚀 儲存並派發影片包來源</button>
+        </div>
 
         <button class="btn btn-danger" onclick="logout()">登出系統</button>
     </div>
@@ -288,6 +295,14 @@
                 document.getElementById('set-gh-token').value = cfg.token || '';
             }
         });
+      // 讀取雲端影片包設定
+        onValue(ref(db, `stations/${sid}/video_config`), (snap) => {
+            if(snap.exists()) {
+                const cfg = snap.val();
+                document.getElementById('set-gh-video-url').value = cfg.url || '';
+                document.getElementById('set-gh-video-token').value = cfg.token || '';
+            }
+        });
     }
 
     window.addBusToStation = async function() {
@@ -353,6 +368,14 @@
         
         await set(ref(db, `stations/${currentStation}/audio_config`), { url: url, token: token });
         showToast("✅ 語音包來源已更新，車機連線時將自動下載！");
+    };
+  window.saveVideoConfig = async function() {
+        const url = document.getElementById('set-gh-video-url').value.trim();
+        const token = document.getElementById('set-gh-video-token').value.trim();
+        if (!url || !token) { alert("請填寫完整的影片連結與金鑰！"); return; }
+        
+        await set(ref(db, `stations/${currentStation}/video_config`), { url: url, token: token });
+        showToast("✅ 影片包來源已更新，主機端將可一鍵同步！");
     };
 
     window.logout = function() { location.reload(); };
