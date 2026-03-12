@@ -325,8 +325,17 @@
 
         function triggerRemoteAnnouncement(data) {
             pidsAnnounceId++; const myId = pidsAnnounceId;
+            
+            // 🛑 安卓防卡死 1：徹底切斷上一句的聲音與回呼
             if (window.speechSynthesis) window.speechSynthesis.cancel();
-            pidsPlayQueue = []; window.pidsIsPlaying = false;
+            try { 
+                globalPlayer.pause(); 
+                globalPlayer.onended = null; 
+                globalPlayer.onerror = null; 
+            } catch(e){}
+            
+            pidsPlayQueue = []; 
+            window.pidsIsPlaying = false;
 
             const playMode = globalStationSettings.mode || 'all';
             if (playMode === 'next_only' && data.mode === 'arr') return;
@@ -365,9 +374,17 @@
             processPidsQueue(myId);
         }
 
-        // ★ 核心修改：強制使用 iPhone 解鎖播放器，確保聲音不被擋
+        // ★ 安卓/通用防卡死播放引擎：解決重疊與 TTS 當機問題
+        window._currentTTS = null; // 🛑 防止 Android Chrome 吃掉語音回呼的關鍵變數
+
         async function processPidsQueue(announceId) {
-            if (window.pidsIsPlaying || pidsPlayQueue.length === 0) return; 
+            // 如果這期間被新的站點打斷，直接放棄這串舊任務
+            if (announceId !== pidsAnnounceId) return; 
+            
+            if (pidsPlayQueue.length === 0) {
+                window.pidsIsPlaying = false;
+                return; 
+            }
             window.pidsIsPlaying = true;
             
             const item = pidsPlayQueue.shift();
@@ -376,28 +393,56 @@
                 globalPlayer.src = item.src;
                 globalPlayer.volume = window._globalVolume;
                 
-                globalPlayer.onended = () => { finishItem(announceId); };
-                globalPlayer.onerror = () => { console.warn("音檔失效", item.src); finishItem(announceId); };
+                globalPlayer.onended = () => { 
+                    globalPlayer.onended = null;
+                    processPidsQueue(announceId); // 播完立刻接下一首
+                };
+                globalPlayer.onerror = () => { 
+                    globalPlayer.onerror = null;
+                    processPidsQueue(announceId); 
+                };
                 
                 try {
                     await globalPlayer.play();
                 } catch(e) {
-                    console.error("iPhone 阻擋播放:", e);
-                    finishItem(announceId);
+                    // 若因為快速切換導致被中斷，直接換下一首
+                    processPidsQueue(announceId);
                 }
 
             } else if (item.type === 'tts') {
                 if (window.speechSynthesis) {
-                    window.speechSynthesis.cancel();
                     const u = new SpeechSynthesisUtterance(item.text);
+                    window._currentTTS = u; // 🛑 核心解法：強制保存在全域，避免 Android 記憶體回收導致卡死
                     u.lang = item.lang || 'zh-TW';
                     u.rate = 0.9;
                     u.volume = window._globalVolume;
-                    u.onend = () => { finishItem(announceId); };
-                    u.onerror = () => { finishItem(announceId); };
-                    window.speechSynthesis.speak(u);
+                    
+                    u.onend = () => { 
+                        window._currentTTS = null;
+                        processPidsQueue(announceId); 
+                    };
+                    u.onerror = () => { 
+                        window._currentTTS = null;
+                        processPidsQueue(announceId); 
+                    };
+                    
+                    // 加上延遲與防呆，避免 Android 語音引擎打架
+                    setTimeout(() => {
+                        if (announceId === pidsAnnounceId) {
+                            window.speechSynthesis.speak(u);
+                            
+                            // 終極防呆：如果 8 秒後 onend 還是沒觸發（Android 偶發性裝死），強制解鎖跳下一句
+                            setTimeout(() => {
+                                if (window._currentTTS === u) {
+                                    console.warn("TTS 逾時無回應，強制解鎖");
+                                    window._currentTTS = null;
+                                    processPidsQueue(announceId);
+                                }
+                            }, Math.max(4000, item.text.length * 400));
+                        }
+                    }, 50);
                 } else {
-                    finishItem(announceId);
+                    processPidsQueue(announceId);
                 }
             }
         }
