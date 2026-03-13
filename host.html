@@ -632,6 +632,33 @@
                 isPidsRunning: window.isTrackingPIDS,
                 timestamp: Date.now()
             });
+            window.reportFMS("系統狀態更新", true); // 同步觸發 FMS 強制上傳
+        };
+
+        // 📡 車隊管理系統 (FMS) 智慧回報引擎
+        window._lastFmsTime = 0;
+        window.reportFMS = function(eventMsg = "行駛中", force = false) {
+            if(!window._isHostConnected || !fbDb || !window._currentStationId || !window._lastValidLat) return;
+            const now = Date.now();
+            
+            // 💡 節流閥：如果不是強制事件(進出站)，且距離上次回報小於 20 秒，就扣留訊號不發送，節省流量
+            if (!force && (now - window._lastFmsTime < 20000)) return; 
+            window._lastFmsTime = now;
+            
+            let cStop = "準備中";
+            if(window.stops && window.stops[window.pidsCurrentIndex]) { cStop = window.stops[window.pidsCurrentIndex].nameZH; }
+            
+            fbSetRef(fbRef(fbDb, `stations/${window._currentStationId}/fleet/${window._currentBusId}`), {
+                lat: window._lastValidLat,
+                lon: window._lastValidLon,
+                heading: window._currentHeading || 0,
+                routeName: window.routeName || "---",
+                direction: window.currentDirection || "outbound",
+                currentStop: cStop,
+                event: eventMsg,
+                isTracking: (window.isTrackingPIDS || window.isTrackingVideo),
+                timestamp: now
+            });
         };
 
         // ==========================================
@@ -1440,6 +1467,12 @@
             if(checkIntervalId) clearInterval(checkIntervalId);
             checkIntervalId = setInterval(() => { 
                 monitorHealth(); 
+                
+                // 🚗 獨立的 FMS 背景心跳：不受 GPS 靜止影響，只要在導航中，就強制去撞節流閥 (滿20秒即發送)
+                if (window.isTrackingVideo || window.isTrackingPIDS) {
+                    window.reportFMS("系統連線中", false);
+                }
+
                 if (!window._useRemoteGps && (window.isTrackingVideo||window.isTrackingPIDS) && (Date.now() - lastUpdateTimestamp > 1500)) { 
                     navigator.geolocation.getCurrentPosition((pos) => { hasFirstFix = true; window.onLocationUpdate(pos); }, () => {}, { enableHighAccuracy: true, timeout: 3000, maximumAge: 0 }); 
                 } 
@@ -1545,7 +1578,9 @@
                     else if (!hasTriggeredAnyGlobal && closestValidStopIdx !== -1) { expectedNextIdx = closestValidStopIdx; } 
                     else { let searchStart = currentMaxIndex !== -1 ? currentMaxIndex + 1 : 0; for (let k = searchStart; k < window.stops.length; k++) { if (window.stops[k].enabled && !window.stops[k].mergedSkipped) { expectedNextIdx = k; break; } } }
                 }
-                window.stops.forEach((stop, index) => checkDist(stop, lat, lon, index, expectedNextIdx, hasTriggeredAnyGlobal, closestValidStopIdx)); 
+                wwindow.stops.forEach((stop, index) => checkDist(stop, lat, lon, index, expectedNextIdx, hasTriggeredAnyGlobal, closestValidStopIdx)); 
+                
+               
             }
         }
 
@@ -2026,6 +2061,10 @@
         function triggerPidsAnnouncement(stationIdx, mode) {
             try {
                 const s = window.stops[stationIdx]; if (!s) return;
+                
+                // 🚀 FMS 強制事件回報：進/出站瞬間，無視 20 秒限制，立刻打給後台！
+                let eventMsg = (mode === 'arr') ? `🟢 即將抵達：${s.nameZH}` : `▶️ 前往下一站：${s.nameZH}`;
+                window.reportFMS(eventMsg, true);
 
                 const bMode = document.getElementById('pids-broadcast-mode') ? document.getElementById('pids-broadcast-mode').value : 'both';
                 if (bMode === 'next_only' && mode === 'arr') return;
