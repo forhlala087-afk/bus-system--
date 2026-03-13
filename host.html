@@ -981,7 +981,7 @@
         }
 
         function makeStop(id, zh, en, lat, lon, rad='150', t='', cp=false, wp=false, enb=true, mut=false, mg=false) {
-            return { id: id, nameZH: zh, nameEN: en, lat: lat, lon: lon, rad: rad, time: t, file: null, exitFile: null, triggered: false, enterTriggered: false, exitTriggered: false, coreEntered: false, anchorInvalidated: false, waitingForHeadingToCorrect: false, prevDistCur: undefined, prevDistNext: undefined, bothAwayTriggered: false, bgEnterTriggered: false, bgExitTriggered: false, bgCoreEntered: false, bgAnchorInvalidated: false, bgWaitingForHeadingToCorrect: false, bgBothAwayTriggered: false, dynamicInnerEntered: false, bgDynamicInnerEntered: false, mergedSkipped: mg, enabled: enb, muted: mut, isCheckpoint: cp, isWaypoint: wp, entryLat: null, entryLon: null, enterTime: 0, isZhinanFirst: false, isZhinanSecond: false, split: false };
+            return { id: id, nameZH: zh, nameEN: en, lat: lat, lon: lon, rad: rad, time: t, file: null, exitFile: null, triggered: false, enterTriggered: false, exitTriggered: false, coreEntered: false, anchorInvalidated: false, waitingForHeadingToCorrect: false, prevDistCur: undefined, prevDistNext: undefined, bothAwayTriggered: false, bgEnterTriggered: false, bgExitTriggered: false, bgCoreEntered: false, bgAnchorInvalidated: false, bgWaitingForHeadingToCorrect: false, bgBothAwayTriggered: false, dynamicInnerEntered: false, bgDynamicInnerEntered: false, mergedSkipped: mg, enabled: enb, muted: mut, isCheckpoint: cp, isWaypoint: wp, entryLat: null, entryLon: null, enterTime: 0, isZhinanFirst: false, isZhinanSecond: false, split: false, arrAnnounced: false };
         }
 
         function resetStopsState() {
@@ -989,7 +989,7 @@
                 s.triggered = false; s.enterTriggered = false; s.exitTriggered = false; s.coreEntered = false; 
                 s.anchorInvalidated = false; s.waitingForHeadingToCorrect = false; s.prevDistCur = undefined; s.prevDistNext = undefined; s.bothAwayTriggered = false;
                 s.bgEnterTriggered = false; s.bgExitTriggered = false; s.bgCoreEntered = false; s.bgAnchorInvalidated = false; s.bgWaitingForHeadingToCorrect = false; s.bgBothAwayTriggered = false;
-                s.dynamicInnerEntered = false; s.bgDynamicInnerEntered = false; s.entryLat = null; s.entryLon = null; s.enterTime = 0; 
+                s.dynamicInnerEntered = false; s.bgDynamicInnerEntered = false; s.entryLat = null; s.entryLon = null; s.enterTime = 0; s.arrAnnounced = false;
             }); 
             currentMaxIndex = -1; lastGlobalExitTime = Date.now(); lastStationActivityTime = 0; window._lastValidLat = null; window._lastValidLon = null; window._currentHeading = null;
         }
@@ -1380,7 +1380,7 @@
             
             if(!isSilent) { loadingOverlay.style.display = 'flex'; loadingText.innerText = "載入中..."; }
             window.currentRouteId = route.id; localStorage.setItem('gps_alarm_last_route_id', window.currentRouteId); 
-            const restore = async (sArray, dir) => { let res = []; for(let i=0; i<sArray.length; i++) { const sData = sArray[i]; const file = await getVideoFromDB(window.currentRouteId, dir, i, 'enter'); const exitFile = await getVideoFromDB(window.currentRouteId, dir, i, 'exit'); res.push({ ...sData, file: file, exitFile: exitFile, triggered: false, enterTriggered: false, exitTriggered: false, coreEntered: false, anchorInvalidated: false, waitingForHeadingToCorrect: false, prevDistCur: undefined, prevDistNext: undefined, bothAwayTriggered: false, bgEnterTriggered: false, bgExitTriggered: false, bgCoreEntered: false, bgAnchorInvalidated: false, bgWaitingForHeadingToCorrect: false, bgBothAwayTriggered: false, dynamicInnerEntered: false, bgDynamicInnerEntered: false, mergedSkipped: false, entryLat: null, entryLon: null, enterTime: 0, isZhinanFirst: false, isZhinanSecond: false, split: sData.split || false, id: i+1 }); } return res; };
+            const restore = async (sArray, dir) => { let res = []; for(let i=0; i<sArray.length; i++) { const sData = sArray[i]; const file = await getVideoFromDB(window.currentRouteId, dir, i, 'enter'); const exitFile = await getVideoFromDB(window.currentRouteId, dir, i, 'exit'); res.push({ ...sData, file: file, exitFile: exitFile, triggered: false, enterTriggered: false, exitTriggered: false, coreEntered: false, anchorInvalidated: false, waitingForHeadingToCorrect: false, prevDistCur: undefined, prevDistNext: undefined, bothAwayTriggered: false, bgEnterTriggered: false, bgExitTriggered: false, bgCoreEntered: false, bgAnchorInvalidated: false, bgWaitingForHeadingToCorrect: false, bgBothAwayTriggered: false, dynamicInnerEntered: false, bgDynamicInnerEntered: false, mergedSkipped: false, entryLat: null, entryLon: null, enterTime: 0, isZhinanFirst: false, isZhinanSecond: false, split: sData.split || false, arrAnnounced: false, id: i+1 }); } return res; };
             window.projectData.outbound = { ...route.outbound, stops: await restore(route.outbound.stops, 'outbound') }; window.projectData.inbound = { ...route.inbound, stops: await restore(route.inbound.stops, 'inbound') };
             loadFromProject(startDirection); 
             if(!isSilent) { loadingOverlay.style.display = 'none'; closeRouteList(); setTimeout(() => alert(`✅ 載入完成`), 200); }
@@ -1672,12 +1672,19 @@
                     let distNext = Infinity; if (nextIdx !== -1 && window.stops[nextIdx].lat && window.stops[nextIdx].lon) { distNext = getDist(curLat, curLon, parseFloat(window.stops[nextIdx].lat), parseFloat(window.stops[nextIdx].lon)); }
 
                     if (nextIdx === -1) {
-                        if (stop.bgPrevDistCur !== undefined) {
-                            let dCurDelta = dist - stop.bgPrevDistCur;
-                            if (dist > coreRadius && dCurDelta > deltaBuffer) { isBgLeaving = true; }
+                    if (stop.coreEntered) {
+                        if (stop.prevDistCur !== undefined) {
+                            let dCurDelta = dist - stop.prevDistCur;
+                            if (dist > coreRadius && dCurDelta > deltaBuffer) { isLeaving = true; }
                         }
-                        if (dist > dynamicExitRad) { isBgLeaving = true; }
+                        if (dist > dynamicExitRad) { isLeaving = true; }
+                    } else if (dist > dynamicExitRad) {
+                        // 擦邊球：取消主引擎錨點，不播報下一站！
+                        stop.enterTriggered = false; stop.triggered = false; stop.entryLat = null; stop.entryLon = null;
+                        const el = document.getElementById(`card-${stop.id}`); if (el) el.classList.remove('active');
+                        if (currentPlayingId === stop.id && window.isTrackingPIDS) window.closeSplitScreen();
                     }
+                }
                     else if (stop.bgCoreEntered) {
                         let isCoreExiting = false;
                         if (isCloseStation) { if (stop.bgDynamicInnerEntered && dist > dynamicCoreExitRad) isCoreExiting = true; else if (dist > coreRadius) isCoreExiting = true; } 
@@ -1760,7 +1767,12 @@
                         if (window.isTrackingVideo && stop.file && !stop.split) { playVideo(stop.id, stop.file, stop.muted); }
                         if (window.isTrackingPIDS) { 
                             window.handleSplitScreen(stop, 'enter'); // 🧠 交給智慧中樞無縫處理
-                            window.pidsCurrentIndex = index; window.isNextStopMode = false; document.getElementById('status-text-pids').innerText = "即將抵達 | Arriving"; window.updatePidsDisplay(); triggerPidsAnnouncement(window.pidsCurrentIndex, 'arr'); 
+                            window.pidsCurrentIndex = index; window.isNextStopMode = false; document.getElementById('status-text-pids').innerText = "即將抵達 | Arriving"; window.updatePidsDisplay(); 
+                            // ✨ 防重播記憶鎖：如果這站還沒廣播過，才呼叫語音
+                            if (!stop.arrAnnounced) { 
+                                triggerPidsAnnouncement(window.pidsCurrentIndex, 'arr'); 
+                                stop.arrAnnounced = true; 
+                            }
                         }
                     }
                 }
@@ -1824,7 +1836,12 @@
                         let distBetweenStops = (nextIdx !== -1 && window.stops[nextIdx].lat && window.stops[nextIdx].lon) ? getDist(parseFloat(latVal), parseFloat(lonVal), parseFloat(window.stops[nextIdx].lat), parseFloat(window.stops[nextIdx].lon)) : 0;
                         let leaveThreshold = 60 + bufferVal + distBetweenStops;
                         if (dist > leaveThreshold) { isLeaving = true; }
-                    } else if (dist > dynamicExitRad) { isLeaving = true; }
+                    } else if (dist > dynamicExitRad) { 
+                        // 擦邊球：取消主引擎錨點，不播報下一站！
+                        stop.enterTriggered = false; stop.triggered = false; stop.entryLat = null; stop.entryLon = null;
+                        const el = document.getElementById(`card-${stop.id}`); if (el) el.classList.remove('active');
+                        if (currentPlayingId === stop.id && window.isTrackingPIDS) window.closeSplitScreen();
+                    }
                 }
                 
                 stop.prevDistCur = dist; stop.prevDistNext = distNext;
