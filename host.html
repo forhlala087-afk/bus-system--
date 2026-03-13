@@ -482,16 +482,36 @@
                 });
 
                 // 監聽遙控器存活狀態
+                // 監聽遙控器存活狀態與自動切換 GPS 來源
                 window._remoteIsAlive = false;
                 let remoteTimeout = null;
                 window.unsubStatus = fbOnValueRef(fbRef(fbDb, 'buses/' + busId + '/remote_status'), (snap) => {
                     const data = snap.val();
                     if (data && data.alive) {
-                        window._remoteIsAlive = true;
+                        // 1. 若遙控器剛連上線 (從離線變上線狀態)，自動打勾並切換為手機 GPS
+                        if (!window._remoteIsAlive) {
+                            window._remoteIsAlive = true;
+                            window._useRemoteGps = true;
+                            const gpsCheckbox = document.getElementById('use-remote-gps');
+                            if (gpsCheckbox) gpsCheckbox.checked = true;
+                            showToast("📱 遙控器已連線，自動切換為手機 GPS！");
+                            // 如果導航正在進行中，立刻重啟定位引擎套用新設定
+                            if (window.isTrackingVideo || window.isTrackingPIDS) startWatcher(); 
+                        }
+
                         if (remoteTimeout) clearTimeout(remoteTimeout);
+                        
+                        // 2. 設置 10 秒心跳防護，如果遙控器斷線或關閉，自動切回主機 GPS
                         remoteTimeout = setTimeout(() => { 
-                            window._remoteIsAlive = false; 
-                            showToast("⚠️ 遙控器斷線，主機喇叭接管！"); 
+                            if (window._remoteIsAlive) {
+                                window._remoteIsAlive = false; 
+                                window._useRemoteGps = false; // ✨ 自動解除打勾
+                                const gpsCheckbox = document.getElementById('use-remote-gps');
+                                if (gpsCheckbox) gpsCheckbox.checked = false;
+                                showToast("⚠️ 遙控器斷線！已自動切換回本機 GPS。"); 
+                                // 如果導航正在進行中，立刻重啟定位引擎套用新設定
+                                if (window.isTrackingVideo || window.isTrackingPIDS) startWatcher();
+                            }
                         }, 10000); 
                     }
                 });
@@ -1793,11 +1813,7 @@
                     // 💡 離站時，判斷是否播放離開影片
                     // 💡 離站時，判斷是否播放離開影片
                     if (window.isTrackingPIDS) {
-                        if (stop.split && stop.exitFile) { 
-                            window.playSplitScreen(stop.id, stop.exitFile, stop.muted); 
-                        } else { 
-                            window.closeSplitScreen(); 
-                        }
+                        window.handleSplitScreen(stop, 'exit'); // 🧠 交給智慧中樞處理
                     }
                     
                     saveCurrentToProject();
@@ -1827,11 +1843,12 @@
         }
 
         // ✨ 影片輪播播放引擎 ✨
+        // ✨ 影片輪播與雙屏播放引擎 ✨
         window.startPlaylist = function() {
             if (!window.playlistVideos || window.playlistVideos.length === 0) return;
             window._isPlaylistPlaying = true;
             window._playlistIndex = 0;
-            playPlaylistVideo();
+            window.playPlaylistVideo();
         }
         
         window.playPlaylistVideo = function() {
@@ -1840,20 +1857,28 @@
             
             const videoData = window.playlistVideos[window._playlistIndex];
             videoOverlay.style.display = "flex"; errorMsg.style.display = "none";
-            video.src = videoData.url; video.muted = false; video.volume = window._globalVolume;
-            attemptFullscreen();
+            video.src = videoData.url; 
+            
+            // 判斷目前是否在雙屏模式
+            // 判斷目前是否在雙屏模式
+            let isSplit = videoOverlay.classList.contains('split-mode');
+            video.muted = false; // ✨ 永遠不靜音，讓車上電視自己決定要不要發出聲音
+            video.volume = window._globalVolume; // ✨ 維持 100% 原始音量輸出
+            video.loop = false; // 輪播是一首接一首
+            
+            if (!isSplit) attemptFullscreen();
             
             video.onended = function() {
-                if (window._isPlaylistPlaying) { window._playlistIndex++; playPlaylistVideo(); }
+                if (window._isPlaylistPlaying) { window._playlistIndex++; window.playPlaylistVideo(); }
             };
             video.onerror = function() {
-                if (window._isPlaylistPlaying) { window._playlistIndex++; playPlaylistVideo(); }
+                if (window._isPlaylistPlaying) { window._playlistIndex++; window.playPlaylistVideo(); }
             };
             video.play().catch(e => { video.muted = true; video.play(); });
         }
         
         window.stopPlaylist = function() {
-            if (window._isPlaylistPlaying) { window._isPlaylistPlaying = false; closeVideo(); }
+            if (window._isPlaylistPlaying) { window._isPlaylistPlaying = false; window.closeVideo(); }
         }
 
         window.playSplitScreen = function(id, file, startMuted) { 
@@ -1864,17 +1889,52 @@
             const url = URL.createObjectURL(file); 
             video.src = url; 
             video.muted = startMuted; 
-            video.loop = true; // ✨ 讓站點廣告無限循環
+            video.loop = true; // 專屬站點影片無限循環
             video.volume = window._globalVolume * 0.3; 
             video.play().catch(e => { video.muted = true; video.play(); }); 
         };
+
         window.closeSplitScreen = function() { 
             videoOverlay.classList.remove('split-mode'); 
             pidsOverlay.classList.remove('split-mode'); 
-            video.pause(); video.loop = false; // 恢復
+            video.pause(); video.loop = false; 
             videoOverlay.style.display = "none"; video.src = ""; 
             currentPlayingId = null;
+            window._isPlaylistPlaying = false; // 收起雙屏時中斷輪播
         };
+
+        // 🧠 智慧雙屏中樞引擎
+        window.handleSplitScreen = function(stop, type) {
+            if (!stop || !stop.split) {
+                window.closeSplitScreen();
+                return;
+            }
+            
+            let targetFile = (type === 'enter') ? stop.file : stop.exitFile;
+            
+            if (targetFile) {
+                // 1. 有專屬影片：中斷輪播，直接播放專屬影片
+                window._isPlaylistPlaying = false; 
+                window.playSplitScreen(stop.id, targetFile, stop.muted);
+            } else if (window.playlistVideos && window.playlistVideos.length > 0) {
+                // 2. 沒專屬影片，但有備用輪播包：啟動或維持輪播雙屏
+                currentPlayingId = stop.id;
+                videoOverlay.classList.add('split-mode'); 
+                pidsOverlay.classList.add('split-mode');
+                
+                if (!window._isPlaylistPlaying) {
+                    // 還沒開始輪播，啟動它
+                    window._isPlaylistPlaying = true;
+                    window.playPlaylistVideo();
+                }
+                // 💡 如果 isPlaylistPlaying 是 true，代表上一站也在輪播，我們什麼都不做，讓它無縫接軌繼續播！
+            } else {
+                // 3. 什麼影片都沒有：收起雙屏
+                window.closeSplitScreen();
+            }
+        };
+        
+        window.closeVideo = function() { exitFullscreen(); video.pause(); video.onended = null; videoOverlay.style.display = "none"; video.src = ""; currentPlayingId = null; window._isPlaylistPlaying = false; };
 
         function playVideo(id, file, startMuted) { window._isPlaylistPlaying = false; isStickyLoop = false; currentPlayingId = id; videoOverlay.style.display = "flex"; errorMsg.style.display = "none"; const url = URL.createObjectURL(file); video.src = url; attemptFullscreen(); video.muted = startMuted ? true : false; video.volume = window._globalVolume; video.onended = function() { video.muted = true; video.play(); }; video.onerror = function() { errorMsg.style.display = "block"; }; var playPromise = video.play(); if (playPromise !== undefined) { playPromise.catch(error => { video.muted = true; video.play(); }); } }
         window.closeVideo = function() { exitFullscreen(); video.pause(); video.onended = null; videoOverlay.style.display = "none"; video.src = ""; currentPlayingId = null; };
@@ -2069,17 +2129,12 @@
             if (window.isNextStopMode) { 
                 window.isNextStopMode = false; document.getElementById('status-text-pids').innerText = "即將抵達 | Arriving"; 
                 const s = window.stops[window.pidsCurrentIndex];
-                if (s && s.split && s.file) { window.playSplitScreen(s.id, s.file, s.muted); } 
-                else { window.closeSplitScreen(); } // 💡 沒設定進入影片就收起雙屏
+                if (s) window.handleSplitScreen(s, 'enter'); // 🧠 交給智慧中樞處理
                 window.updatePidsDisplay(); triggerPidsAnnouncement(window.pidsCurrentIndex, 'arr'); 
             } 
             else {
                 const currentStop = window.stops[window.pidsCurrentIndex];
-                if (currentStop && currentStop.split && currentStop.exitFile) { 
-                    window.playSplitScreen(currentStop.id, currentStop.exitFile, currentStop.muted); 
-                } else { 
-                    window.closeSplitScreen(); // 💡 沒設定離開影片就收起雙屏 
-                }
+                if (currentStop) window.handleSplitScreen(currentStop, 'exit'); // 🧠 交給智慧中樞處理
                 
                 let nextIdx = -1; for(let i = window.pidsCurrentIndex + 1; i < window.stops.length; i++) { if (isPidsValid(window.stops[i])) { nextIdx = i; break; } }
                 if (nextIdx !== -1) { window.pidsCurrentIndex = nextIdx; window.isNextStopMode = true; document.getElementById('status-text-pids').innerText = "下一站 | Next Stop"; window.updatePidsDisplay(); triggerPidsAnnouncement(window.pidsCurrentIndex, 'next'); } 
