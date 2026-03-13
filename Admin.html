@@ -158,11 +158,10 @@
             <button class="btn" style="background:#2980b9;" onclick="saveAudioConfig()">🚀 儲存並強制派發語音</button>
         </div>
         <div class="card" style="border-top-color: #e84393;">
-            <h2>🎬 6. 全站影片包派發 (一鍵同步)</h2>
-            <p style="font-size: 14px; color: #666;">設定 GitHub 影片包來源 (根目錄需有 <b>video.zip</b>)。儲存後，主機會出現雲端同步按鈕，司機點擊即可全自動下載解壓！</p>
-            <input type="text" id="set-gh-video-url" class="input-field" placeholder="GitHub 影片專案連結 (例: https://github.com/...)">
-            <input type="password" id="set-gh-video-token" class="input-field" placeholder="GitHub 金鑰 (ghp_...)">
-            <button class="btn" style="background:#e84393;" onclick="saveVideoConfig()">🚀 儲存並派發影片包來源</button>
+            <h2>🎬 6. 雲端輪播清單 (R2 網址串流)</h2>
+            <p style="font-size: 14px; color: #666;">請在此貼上 Cloudflare R2 的影片直連網址（一行一個網址）。儲存後，全車隊的輪播影片會瞬間切換，主機無須下載任何檔案！</p>
+            <textarea id="set-playlist-urls" class="input-field" rows="5" placeholder="https://pub-xxxx.r2.dev/ad-01.mp4&#10;https://pub-xxxx.r2.dev/ad-02.mp4"></textarea>
+            <button class="btn" style="background:#e84393;" onclick="savePlaylistConfig()">🚀 儲存並派發輪播清單</button>
         </div>
 
         <button class="btn btn-danger" onclick="logout()">登出系統</button>
@@ -310,11 +309,13 @@
             }
         });
 
-        onValue(ref(db, `stations/${sid}/audio_config`), (snap) => {
+        // 讀取雲端輪播網址清單
+        onValue(ref(db, `stations/${sid}/playlist_config`), (snap) => {
             if(snap.exists()) {
                 const cfg = snap.val();
-                document.getElementById('set-gh-url').value = cfg.url || '';
-                document.getElementById('set-gh-token').value = cfg.token || '';
+                if(cfg.urls && Array.isArray(cfg.urls)) {
+                    document.getElementById('set-playlist-urls').value = cfg.urls.join('\n');
+                }
             }
         });
 
@@ -670,13 +671,19 @@
         showToast("✅ 語音包來源已更新，車機連線時將自動下載！");
     };
     
-    window.saveVideoConfig = async function() {
-        const url = document.getElementById('set-gh-video-url').value.trim();
-        const token = document.getElementById('set-gh-video-token').value.trim();
-        if (!url || !token) { alert("請填寫完整的影片連結與金鑰！"); return; }
+    // 🚀 派發輪播清單
+    window.savePlaylistConfig = async function() {
+        // 把文字框裡的內容按「換行」切開
+        const lines = document.getElementById('set-playlist-urls').value.split('\n');
+        // 只保留 http 開頭的有效網址
+        const urls = lines.map(l => l.trim()).filter(l => l.startsWith('http'));
         
-        await set(ref(db, `stations/${currentStation}/video_config`), { url: url, token: token });
-        showToast("✅ 影片包來源已更新，主機端將可一鍵同步！");
+        if (urls.length === 0) {
+            if (!confirm("清單是空的！這將會清除車機上的輪播影片，確定嗎？")) return;
+        }
+
+        await set(ref(db, `stations/${currentStation}/playlist_config`), { urls: urls });
+        showToast(`✅ 已派發 ${urls.length} 支輪播影片，車機將無縫串流播放！`);
     };
 
     window.logout = function() { location.reload(); };
