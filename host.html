@@ -1724,8 +1724,7 @@
                     } else {
                         if (window.isTrackingVideo && stop.file && !stop.split) { playVideo(stop.id, stop.file, stop.muted); }
                         if (window.isTrackingPIDS) { 
-                            if (stop.split && stop.file) { window.playSplitScreen(stop.id, stop.file, stop.muted); }
-                            else { window.closeSplitScreen(); } // 💡 沒設定進入影片就收起雙屏
+                            window.handleSplitScreen(stop, 'enter'); // 🧠 交給智慧中樞無縫處理
                             window.pidsCurrentIndex = index; window.isNextStopMode = false; document.getElementById('status-text-pids').innerText = "即將抵達 | Arriving"; window.updatePidsDisplay(); triggerPidsAnnouncement(window.pidsCurrentIndex, 'arr'); 
                         }
                     }
@@ -2119,7 +2118,6 @@
         }
 
         window.pidsNextAction = function() {
-            window.stopPlaylist(); // 手動操作時中斷影片
             if (window.isTrackingPIDS && hasFirstFix && !window._useRemoteGps) return; 
             saveCurrentToProject(); 
             pidsIsShowingMap = false; const pageNext = document.getElementById('page-next-stop-pids'); const pageMap = document.getElementById('page-route-map-pids');
@@ -2146,7 +2144,7 @@
             } 
         }
 
-        window.pidsPrevStop = function() { window.stopPlaylist(); if (window.isTrackingPIDS && hasFirstFix && !window._useRemoteGps) return; let prevIdx = -1; for(let i = window.pidsCurrentIndex - 1; i >= 0; i--) { if (isPidsValid(window.stops[i])) { prevIdx = i; break; } } if (prevIdx !== -1) { window.pidsCurrentIndex = prevIdx; window.isNextStopMode = true; document.getElementById('status-text-pids').innerText = "下一站 | Next Stop"; window.updatePidsDisplay(); } }
+        window.pidsPrevStop = function() { if (window.isTrackingPIDS && hasFirstFix && !window._useRemoteGps) return; let prevIdx = -1; for(let i = window.pidsCurrentIndex - 1; i >= 0; i--) { if (isPidsValid(window.stops[i])) { prevIdx = i; break; } } if (prevIdx !== -1) { window.pidsCurrentIndex = prevIdx; window.isNextStopMode = true; document.getElementById('status-text-pids').innerText = "下一站 | Next Stop"; window.updatePidsDisplay(); } }
 
         function startPidsCycle() {
             if (pidsCycleInterval) clearInterval(pidsCycleInterval);
