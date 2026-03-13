@@ -483,37 +483,59 @@
 
                 // 監聽遙控器存活狀態
                 // 監聽遙控器存活狀態與自動切換 GPS 來源
+                // 🛡️ 升級版：監聽遙控器存活狀態與自動切換 GPS 來源 (包含防閃斷機制)
                 window._remoteIsAlive = false;
                 let remoteTimeout = null;
+                
                 window.unsubStatus = fbOnValueRef(fbRef(fbDb, 'buses/' + busId + '/remote_status'), (snap) => {
                     const data = snap.val();
-                    if (data && data.alive) {
-                        // 1. 若遙控器剛連上線 (從離線變上線狀態)，自動打勾並切換為手機 GPS
-                        if (!window._remoteIsAlive) {
-                            window._remoteIsAlive = true;
-                            window._useRemoteGps = true;
-                            const gpsCheckbox = document.getElementById('use-remote-gps');
-                            if (gpsCheckbox) gpsCheckbox.checked = true;
-                            showToast("📱 遙控器已連線，自動切換為手機 GPS！");
-                            // 如果導航正在進行中，立刻重啟定位引擎套用新設定
-                            if (window.isTrackingVideo || window.isTrackingPIDS) startWatcher(); 
-                        }
+                    const now = Date.now();
 
+                    // ✨ 核心防禦：如果這包資料沒有時間戳，或者時間戳已經是 15 秒前(過期)的舊資料，直接無視！
+                    // 💀 死亡宣告防禦：如果遙控器明確傳來死亡訊號，立刻斬斷連線！
+                    if (data && data.alive === false) {
+                        if (window._remoteIsAlive) {
+                            window._remoteIsAlive = false; 
+                            window._useRemoteGps = false; 
+                            const gpsCheckbox = document.getElementById('use-remote-gps');
+                            if (gpsCheckbox) gpsCheckbox.checked = false;
+                            showToast("⚠️ 遙控器已主動斷線，切回本機 GPS。"); 
+                            if (window.isTrackingVideo || window.isTrackingPIDS) startWatcher();
+                        }
                         if (remoteTimeout) clearTimeout(remoteTimeout);
-                        
-                        // 2. 設置 10 秒心跳防護，如果遙控器斷線或關閉，自動切回主機 GPS
-                        remoteTimeout = setTimeout(() => { 
-                            if (window._remoteIsAlive) {
-                                window._remoteIsAlive = false; 
-                                window._useRemoteGps = false; // ✨ 自動解除打勾
-                                const gpsCheckbox = document.getElementById('use-remote-gps');
-                                if (gpsCheckbox) gpsCheckbox.checked = false;
-                                showToast("⚠️ 遙控器斷線！已自動切換回本機 GPS。"); 
-                                // 如果導航正在進行中，立刻重啟定位引擎套用新設定
-                                if (window.isTrackingVideo || window.isTrackingPIDS) startWatcher();
-                            }
-                        }, 10000); 
+                        return;
                     }
+
+                    // ✨ 核心防禦：防範手機時差 (Math.abs) 與 15 秒過期資料
+                    if (!data || !data.alive || !data.timestamp || (Math.abs(now - data.timestamp) > 15000)) {
+                        return; // 這是幽靈舊資料，不處理！
+                    }
+
+                    // --- 如果資料是新鮮的，代表遙控器真的還活著 ---
+                    
+                    // 1. 若遙控器剛連上線 (從離線變上線狀態)，自動打勾並切換為手機 GPS
+                    if (!window._remoteIsAlive) {
+                        window._remoteIsAlive = true;
+                        window._useRemoteGps = true;
+                        const gpsCheckbox = document.getElementById('use-remote-gps');
+                        if (gpsCheckbox) gpsCheckbox.checked = true;
+                        showToast("📱 遙控器已連線，自動切換為手機 GPS！");
+                        if (window.isTrackingVideo || window.isTrackingPIDS) startWatcher(); 
+                    }
+
+                    // 2. 每次收到新鮮心跳，就重置死亡倒數計時器 (給 16 秒的寬限期)
+                    if (remoteTimeout) clearTimeout(remoteTimeout);
+                    
+                    remoteTimeout = setTimeout(() => { 
+                        if (window._remoteIsAlive) {
+                            window._remoteIsAlive = false; 
+                            window._useRemoteGps = false; // ✨ 自動解除打勾
+                            const gpsCheckbox = document.getElementById('use-remote-gps');
+                            if (gpsCheckbox) gpsCheckbox.checked = false;
+                            showToast("⚠️ 遙控器斷線！已自動切換回本機 GPS。"); 
+                            if (window.isTrackingVideo || window.isTrackingPIDS) startWatcher();
+                        }
+                    }, 16000); 
                 });
 
                 // ✨ 魔法 1：監聽站務員上傳的「超級路線大補包」自動覆蓋主機 ✨
@@ -549,15 +571,19 @@
                         }
                     }
                 });
-              // ✨ 魔法 4：監聽站務員派發的「影片包」自動下載 ✨
-                fbOnValueRef(fbRef(fbDb, `stations/${stationId}/video_config`), (snap) => {
+              // ✨ 魔法 4：監聽站務員派發的「輪播清單」自動掛載串流 ✨
+                fbOnValueRef(fbRef(fbDb, `stations/${stationId}/playlist_config`), (snap) => {
                     if(snap.exists()) {
                         const cfg = snap.val();
-                        const savedUrl = localStorage.getItem('gps_github_video_url');
-                        if (cfg.url && cfg.token && cfg.url !== savedUrl) {
-                            showToast("☁️ 偵測到雲端新影片包，開始自動同步...");
-                            window.syncGitHubVideo(cfg.url, cfg.token);
+                        if(cfg.urls && Array.isArray(cfg.urls) && cfg.urls.length > 0) {
+                            // 直接把網址轉換成播放器看得懂的格式
+                            window.playlistVideos = cfg.urls.map((u, idx) => ({ name: `Cloud-Ad-${idx+1}`, url: u }));
+                            showToast(`☁️ 已同步 ${cfg.urls.length} 支輪播廣告清單！`);
+                        } else {
+                            window.playlistVideos = []; // 清空輪播
                         }
+                    } else {
+                        window.playlistVideos = [];
                     }
                 });
                 pushStateToFirebase();
@@ -1339,10 +1365,43 @@
             if (nameZH.includes('[影片結束]')) msgHTML = `<div style="font-size:13px; color:#e84393; margin-top:5px; font-weight:bold;">🛑 此站將自動隱藏並停止輪播</div>`;
 
             const disableUp = index === 0 ? 'disabled' : ''; const disableDown = index === window.stops.length - 1 ? 'disabled' : '';
-            return `<div class="card ${cardClass}" id="card-${id}"><div class="card-body"><div class="header-top"><div><span style="font-weight:bold; font-size:18px; margin-right:5px;">第 ${index + 1} 站</span><div class="sort-controls admin-only"><button class="btn-sort" onclick="moveStop(${index}, -1)" ${disableUp}>▲</button><button class="btn-sort" onclick="moveStop(${index}, 1)" ${disableDown}>▼</button><button class="btn-sort jump" onclick="jumpStop(${index})">⤵</button></div></div><div class="switch-wrapper admin-only"><span class="switch-label" id="label-${id}" style="color:${statusColor}">${statusText}</span><label class="switch"><input type="checkbox" ${checkedAttr} onchange="toggleStop(${id})"><span class="slider"></span></label></div></div><div class="input-group" style="margin-bottom:10px;"><input type="text" id="namezh-${id}" value="${nameZH}" placeholder="中文站名" onchange="updateStopData(${id})"><input type="text" id="nameen-${id}" value="${nameEN}" placeholder="英文站名" onchange="updateStopData(${id})"></div><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;"><span id="dist-${id}" class="dist-text">-- m</span><div id="status-${id}" class="locked-msg">🔒 等待前一站...</div></div><div class="file-section admin-only" style="${hideFilesStyle}"><span class="file-label">📍 進入播放</span><input type="file" id="file-${id}" onchange="handleFileSelect(${id}, 'enter')"><div style="display:flex; align-items:center;"><button class="btn-select-file" id="btn-file-${id}" onclick="document.getElementById('file-${id}').click()" style="flex:1;">📂 選擇...</button><span class="dl-link" onclick="downloadTest(${id}, 'enter')">[📥]</span><span class="rm-link" onclick="clearVideo(${id}, 'enter')">[❌]</span></div></div><div class="file-section admin-only" style="${hideFilesStyle}"><span class="file-label">👋 離開播放</span><input type="file" id="file-exit-${id}" onchange="handleFileSelect(${id}, 'exit')"><div style="display:flex; align-items:center;"><button class="btn-select-file exit-file" id="btn-file-exit-${id}" onclick="document.getElementById('file-exit-${id}').click()" style="flex:1;">📂 選擇...</button><span class="dl-link" onclick="downloadTest(${id}, 'exit')">[📥]</span><span class="rm-link" onclick="clearVideo(${id}, 'exit')">[❌]</span></div></div>${msgHTML}<hr><div style="display:flex; gap:10px; margin-bottom:10px;"><div style="flex:1" class="admin-only"><div style="font-size:14px; font-weight:bold; color:#555; margin-bottom:5px;">⏰ 時間:</div><input type="time" id="time-${id}" value="${time}" onchange="updateStopData(${id})"></div><div style="flex:1" class="admin-only"><div style="font-size:14px; font-weight:bold; color:#555; margin-bottom:5px;">📍 半徑(m):</div><input type="number" id="rad-${id}" value="${rad}" onchange="updateStopData(${id})"></div></div><button class="btn-map admin-only" onclick="openMapPicker(${id})">🗺️ 地圖選點</button><div class="input-group admin-only"><input type="number" id="lat-${id}" value="${lat}" placeholder="緯度(Lat)" readonly style="background:#f5f5f5; color:#666"><input type="number" id="lon-${id}" value="${lon}" placeholder="經度(Lon)" readonly style="background:#f5f5f5; color:#666"></div><div id="debug-${id}" style="font-size:11px; color:#aaa; margin-top:5px; font-family:monospace;">等待啟動...</div></div><div class="card-footer"><label class="${waypointClass}"><input type="checkbox" ${waypointChecked} onchange="toggleWaypoint(${id})">📍 中繼站</label><label class="${checkpointClass}"><input type="checkbox" ${isCheckpoint ? 'checked' : ''} onchange="toggleCheckpoint(${id})">🏁 重啟點</label><label class="${muteClass}" style="${hideFilesStyle}"><input type="checkbox" ${muteChecked} onchange="toggleMute(${id})">🔇 靜音</label><label class="action-pill admin-only" style="${hideFilesStyle}"><input type="checkbox" ${stop.split ? 'checked' : ''} onchange="toggleSplit(${id})">🌓 雙屏</label><button class="btn-delete admin-only" onclick="removeStop(${id})">🗑️ 刪除</button></div></div>`;
+            return `<div class="card ${cardClass}" id="card-${id}"><div class="card-body"><div class="header-top"><div><span style="font-weight:bold; font-size:18px; margin-right:5px;">第 ${index + 1} 站</span><div class="sort-controls admin-only"><button class="btn-sort" onclick="moveStop(${index}, -1)" ${disableUp}>▲</button><button class="btn-sort" onclick="moveStop(${index}, 1)" ${disableDown}>▼</button><button class="btn-sort jump" onclick="jumpStop(${index})">⤵</button></div></div><div class="switch-wrapper admin-only"><span class="switch-label" id="label-${id}" style="color:${statusColor}">${statusText}</span><label class="switch"><input type="checkbox" ${checkedAttr} onchange="toggleStop(${id})"><span class="slider"></span></label></div></div><div class="input-group" style="margin-bottom:10px;"><input type="text" id="namezh-${id}" value="${nameZH}" placeholder="中文站名" onchange="updateStopData(${id})"><input type="text" id="nameen-${id}" value="${nameEN}" placeholder="英文站名" onchange="updateStopData(${id})"></div><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;"><span id="dist-${id}" class="dist-text">-- m</span><div id="status-${id}" class="locked-msg">🔒 等待前一站...</div></div><div class="file-section admin-only" style="${hideFilesStyle}"><span class="file-label">📍 進入影片網址 (Cloudflare R2)</span><div style="display:flex; align-items:center; gap:5px;"><input type="text" id="file-${id}" value="${typeof stop.file === 'string' ? stop.file : (stop.file ? '已掛載舊版實體檔' : '')}" placeholder="貼上 http... 開頭的網址" onchange="handleUrlSelect(${id}, 'enter')" style="flex:1; padding:8px; border-radius:6px; border:1px solid #ccc; font-size:12px;"><button onclick="testUrlVideo(${id}, 'enter')" style="background:#27ae60; color:white; border:none; padding:8px; border-radius:6px; cursor:pointer;">▶ 試播</button></div></div><div class="file-section admin-only" style="${hideFilesStyle}"><span class="file-label">👋 離開影片網址 (Cloudflare R2)</span><div style="display:flex; align-items:center; gap:5px;"><input type="text" id="file-exit-${id}" value="${typeof stop.exitFile === 'string' ? stop.exitFile : (stop.exitFile ? '已掛載舊版實體檔' : '')}" placeholder="貼上 http... 開頭的網址" onchange="handleUrlSelect(${id}, 'exit')" style="flex:1; padding:8px; border-radius:6px; border:1px solid #ccc; font-size:12px;"><button onclick="testUrlVideo(${id}, 'exit')" style="background:#27ae60; color:white; border:none; padding:8px; border-radius:6px; cursor:pointer;">▶ 試播</button></div></div><div class="file-section admin-only" style="${hideFilesStyle}"><span class="file-label">👋 離開播放</span><input type="file" id="file-exit-${id}" onchange="handleFileSelect(${id}, 'exit')"><div style="display:flex; align-items:center;"><button class="btn-select-file exit-file" id="btn-file-exit-${id}" onclick="document.getElementById('file-exit-${id}').click()" style="flex:1;">📂 選擇...</button><span class="dl-link" onclick="downloadTest(${id}, 'exit')">[📥]</span><span class="rm-link" onclick="clearVideo(${id}, 'exit')">[❌]</span></div></div>${msgHTML}<hr><div style="display:flex; gap:10px; margin-bottom:10px;"><div style="flex:1" class="admin-only"><div style="font-size:14px; font-weight:bold; color:#555; margin-bottom:5px;">⏰ 時間:</div><input type="time" id="time-${id}" value="${time}" onchange="updateStopData(${id})"></div><div style="flex:1" class="admin-only"><div style="font-size:14px; font-weight:bold; color:#555; margin-bottom:5px;">📍 半徑(m):</div><input type="number" id="rad-${id}" value="${rad}" onchange="updateStopData(${id})"></div></div><button class="btn-map admin-only" onclick="openMapPicker(${id})">🗺️ 地圖選點</button><div class="input-group admin-only"><input type="number" id="lat-${id}" value="${lat}" placeholder="緯度(Lat)" readonly style="background:#f5f5f5; color:#666"><input type="number" id="lon-${id}" value="${lon}" placeholder="經度(Lon)" readonly style="background:#f5f5f5; color:#666"></div><div id="debug-${id}" style="font-size:11px; color:#aaa; margin-top:5px; font-family:monospace;">等待啟動...</div></div><div class="card-footer"><label class="${waypointClass}"><input type="checkbox" ${waypointChecked} onchange="toggleWaypoint(${id})">📍 中繼站</label><label class="${checkpointClass}"><input type="checkbox" ${isCheckpoint ? 'checked' : ''} onchange="toggleCheckpoint(${id})">🏁 重啟點</label><label class="${muteClass}" style="${hideFilesStyle}"><input type="checkbox" ${muteChecked} onchange="toggleMute(${id})">🔇 靜音</label><label class="action-pill admin-only" style="${hideFilesStyle}"><input type="checkbox" ${stop.split ? 'checked' : ''} onchange="toggleSplit(${id})">🌓 雙屏</label><button class="btn-delete admin-only" onclick="removeStop(${id})">🗑️ 刪除</button></div></div>`;
         }
 
         window.handleFileSelect = async function(id, type) { const inputId = type === 'enter' ? 'file-' + id : 'file-exit-' + id; const input = document.getElementById(inputId); if (input.files.length > 0) { const file = input.files[0]; const stopIndex = window.stops.findIndex(s => s.id === id); if (stopIndex !== -1) { if (type === 'enter') window.stops[stopIndex].file = file; else window.stops[stopIndex].exitFile = file; await saveVideoToDB(window.currentRouteId, window.currentDirection, stopIndex, file, type); updateFileUI(id, file, type); } } }
+      // 🔗 處理網址輸入並存檔
+        window.handleUrlSelect = function(id, type) {
+            const inputId = type === 'enter' ? 'file-' + id : 'file-exit-' + id;
+            const urlVal = document.getElementById(inputId).value.trim();
+            const stopIndex = window.stops.findIndex(s => s.id === id);
+            
+            if (stopIndex !== -1) {
+                if (type === 'enter') window.stops[stopIndex].file = urlVal;
+                else window.stops[stopIndex].exitFile = urlVal;
+                
+                // 將網址存入 localStorage (不再需要存入龐大的 IndexedDB 了)
+                saveCurrentToProject(); 
+                
+                if (urlVal) {
+                    const msg = document.getElementById('msg-' + id);
+                    if (msg && type === 'enter') { msg.innerText = `🔗 雲端影片已就緒`; msg.style.color = "green"; }
+                    showToast("✅ 網址已綁定！");
+                }
+            }
+        };
+
+        // ▶ 試播按鈕功能
+        window.testUrlVideo = function(id, type) {
+            const stop = window.stops.find(s => s.id === id);
+            if (!stop) return;
+            const targetUrl = type === 'enter' ? stop.file : stop.exitFile;
+            
+            if (!targetUrl || typeof targetUrl !== 'string' || !targetUrl.startsWith('http')) {
+                alert("請先貼上有效的 http 影片網址！");
+                return;
+            }
+            playVideo(id, targetUrl, false);
+        };
         function updateFileUI(id, file, type) { const btnId = type === 'enter' ? 'btn-file-' + id : 'btn-file-exit-' + id; const btn = document.getElementById(btnId); const prefix = type === 'enter' ? '✅ 進入: ' : '✅ 離開: '; btn.innerText = `${prefix}${file.name}`; btn.classList.add('has-file'); if(type === 'enter') { const msg = document.getElementById('msg-' + id); msg.innerText = `已就緒`; msg.style.color = "green"; } }
         window.clearVideo = async function(id, type) { if(!confirm("確定要移除影片嗎？")) return; const stopIndex = window.stops.findIndex(s => s.id === id); if (stopIndex === -1) return; if (type === 'enter') window.stops[stopIndex].file = null; else window.stops[stopIndex].exitFile = null; await removeVideoFromDB(window.currentRouteId, window.currentDirection, stopIndex, type); const btnId = type === 'enter' ? 'btn-file-' + id : 'btn-file-exit-' + id; const btn = document.getElementById(btnId); btn.innerText = type === 'enter' ? '📂 選擇...' : '📂 選擇...'; btn.classList.remove('has-file'); if(type === 'enter') { const msg = document.getElementById('msg-' + id); msg.innerText = "⚠️ 未設定"; msg.style.color = "#d63031"; } const inputId = type === 'enter' ? 'file-' + id : 'file-exit-' + id; document.getElementById(inputId).value = ''; };
         window.downloadTest = function(id, type) { const stop = window.stops.find(s => s.id === id); const file = type === 'enter' ? stop.file : stop.exitFile; if(!file) { alert("無檔案"); return; } const url = URL.createObjectURL(file); const a = document.createElement('a'); a.href = url; a.download = file.name; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); };
@@ -1932,15 +1991,22 @@
             if (window._isPlaylistPlaying) { window._isPlaylistPlaying = false; window.closeVideo(); }
         }
 
+        // 🌓 雙屏串流播放引擎
         window.playSplitScreen = function(id, file, startMuted) { 
             currentPlayingId = id; 
             videoOverlay.classList.add('split-mode'); 
             pidsOverlay.classList.add('split-mode'); 
             videoOverlay.style.display = "flex"; 
-            const url = URL.createObjectURL(file); 
+            
+            // ✨ 智慧判斷
+            let url = "";
+            if (typeof file === 'string' && file.startsWith('http')) url = file;
+            else if (file instanceof Blob || file instanceof File) url = URL.createObjectURL(file);
+            else url = file;
+            
             video.src = url; 
             video.muted = startMuted; 
-            video.loop = true; // 專屬站點影片無限循環
+            video.loop = true; 
             video.volume = window._globalVolume * 0.3; 
             video.play().catch(e => { video.muted = true; video.play(); }); 
         };
@@ -1987,7 +2053,27 @@
         
         window.closeVideo = function() { exitFullscreen(); video.pause(); video.onended = null; videoOverlay.style.display = "none"; video.src = ""; currentPlayingId = null; window._isPlaylistPlaying = false; };
 
-        function playVideo(id, file, startMuted) { window._isPlaylistPlaying = false; isStickyLoop = false; currentPlayingId = id; videoOverlay.style.display = "flex"; errorMsg.style.display = "none"; const url = URL.createObjectURL(file); video.src = url; attemptFullscreen(); video.muted = startMuted ? true : false; video.volume = window._globalVolume; video.onended = function() { video.muted = true; video.play(); }; video.onerror = function() { errorMsg.style.display = "block"; }; var playPromise = video.play(); if (playPromise !== undefined) { playPromise.catch(error => { video.muted = true; video.play(); }); } }
+        // 🎬 全能播放引擎 (支援 Cloudflare URL 串流與本地檔案)
+        function playVideo(id, file, startMuted) { 
+            window._isPlaylistPlaying = false; isStickyLoop = false; currentPlayingId = id; 
+            videoOverlay.style.display = "flex"; errorMsg.style.display = "none"; 
+            
+            // ✨ 智慧判斷：是網址還是實體檔案？
+            let url = "";
+            if (typeof file === 'string' && file.startsWith('http')) {
+                url = file; // 這是 R2 雲端網址
+            } else if (file instanceof Blob || file instanceof File) {
+                url = URL.createObjectURL(file); // 這是本地舊檔案
+            } else {
+                url = file;
+            }
+            
+            video.src = url; attemptFullscreen(); video.muted = startMuted ? true : false; video.volume = window._globalVolume; 
+            video.onended = function() { video.muted = true; video.play(); }; 
+            video.onerror = function() { errorMsg.style.display = "block"; }; 
+            var playPromise = video.play(); 
+            if (playPromise !== undefined) { playPromise.catch(error => { video.muted = true; video.play(); }); } 
+        }
         window.closeVideo = function() { exitFullscreen(); video.pause(); video.onended = null; videoOverlay.style.display = "none"; video.src = ""; currentPlayingId = null; };
         function attemptFullscreen() { try{const elem = document.documentElement; if (elem.requestFullscreen) { elem.requestFullscreen().catch(err => {}); } else if (elem.webkitRequestFullscreen) { elem.webkitRequestFullscreen(); }}catch(e){} }
         
