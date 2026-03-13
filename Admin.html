@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>🚌 客運調度站 - 站務後台管理系統</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f4f6f9; color: #333; margin: 0; padding: 20px; }
@@ -22,15 +22,27 @@
     .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 20px; border-top: 5px solid #007bff; }
     .card h2 { margin-top: 0; font-size: 20px; color: #34495e; border-bottom: 2px solid #eee; padding-bottom: 10px; }
     
+    /* --- ✨ FMS 戰情室專用 CSS ✨ --- */
+    .fms-bus-marker-container { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100px; height: 100px; pointer-events: none; }
+    
+    /* 車頭箭頭圖示 (會旋轉) */
+    .fms-bus-arrow { width: 32px; height: 32px; background-repeat: no-repeat; background-position: center; border-radius: 50%; border: 2px solid white; box-shadow: 0 4px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; color: white; transition: transform 0.2s ease-out; }
+    /* SVG 車頭箭頭，確保尖尖的朝向正確 */
+    .fms-bus-arrow-svg { width: 18px; height: 18px; fill: white; transform: rotate(180deg); }
+
+    /* 車號與車速標籤 (不旋轉，保持易讀) */
+    .fms-bus-label { background: rgba(0,0,0,0.8); color: white; padding: 4px 10px; border-radius: 12px; font-weight: bold; font-size: 13px; text-align: center; white-space:nowrap; margin-top: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); pointer-events: auto; cursor: pointer; }
+    .fms-bus-speed { color: #f1c40f; font-size: 12px; font-weight: normal; margin-left: 3px; }
+    
     .bus-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; }
-    .bus-tag { background: #e3f2fd; color: #0984e3; padding: 8px 15px; border-radius: 20px; font-weight: bold; display: flex; align-items: center; gap: 8px; }
+    .bus-tag { background: #e3f2fd; color: #0984e3; padding: 8px 15px; border-radius: 20px; font-weight: bold; display: flex; align-items: center; gap: 8px; font-size: 15px; }
     .bus-tag.admin-tag { background: #f9e79f; color: #d35400; }
     .bus-tag span { cursor: pointer; color: #e74c3c; font-size: 18px; }
 
     .setting-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
     .setting-row select, .setting-row input { padding: 8px; border-radius: 6px; border: 1px solid #ccc; }
     
-    #toast { visibility: hidden; min-width: 250px; background-color: #333; color: #fff; text-align: center; border-radius: 8px; padding: 12px; position: fixed; z-index: 100; left: 50%; bottom: 30px; transform: translateX(-50%); }
+    #toast { visibility: hidden; min-width: 250px; background-color: #333; color: #fff; text-align: center; border-radius: 8px; padding: 12px; position: fixed; z-index: 100000; left: 50%; bottom: 30px; transform: translateX(-50%); }
     #toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
     @keyframes fadein { from { bottom: 0; opacity: 0; } to { bottom: 30px; opacity: 1; } }
     @keyframes fadeout { from { bottom: 30px; opacity: 1; } to { bottom: 0; opacity: 0; } }
@@ -68,21 +80,33 @@
 
     <div id="dashboard-section">
         
-        <div class="card" style="border-top-color: #27ae60;">
-          <div class="card" style="border-top-color: #3498db; padding: 10px;">
+        <div class="card" style="border-top-color: #3498db; padding: 10px;">
             <h2 style="padding: 10px 10px 0 10px; border-bottom: none; margin-bottom: 5px;">🗺️ 站點車隊戰情室 (即時動態)</h2>
-            <p style="font-size: 13px; color: #666; margin: 0 0 10px 10px;">顯示本站所有營運中車輛。綠色=導航中，橘色=待命中，灰色=斷線(超過3分鐘無訊號)</p>
+            <p style="font-size: 13px; color: #666; margin: 0 0 10px 10px;">顯示本站營運中車輛。綠色=行駛中，橘色=待命，灰色=斷線。點擊標籤可開啟智慧跟隨。</p>
             <div id="fms-map" style="width: 100%; height: 450px; border-radius: 8px; z-index: 1;"></div>
         </div>
-            <h2>📁 1. 派發全站路線包 (超級 JSON)</h2>
-            <p style="font-size: 14px; color: #666;">請上傳由主機匯出的 <b>Backup.json</b>，上傳後本站所有公車將自動同步這些路線。</p>
+
+        <div class="card" style="border-top-color: #0984e3;">
+            <h2>🌐 1. 一鍵 TDX 智慧巡邏與更新</h2>
+            <p style="font-size: 14px; color: #666;">輸入 TDX 金鑰，系統將自動比對雲端現有路線，抓取 TDX 最新站點，並完美保留您的客製化影片設定！</p>
+            <div style="display:flex; gap:10px; margin-bottom: 10px;">
+                <input type="text" id="tdx-id" class="input-field" placeholder="TDX Client ID" style="margin:0;">
+                <input type="password" id="tdx-secret" class="input-field" placeholder="TDX Client Secret" style="margin:0;">
+            </div>
+            <button class="btn" style="background:#0984e3;" onclick="batchUpdateTDX()">🚀 檢查更新並派發至雲端</button>
+            <div id="tdx-log" style="margin-top: 15px; font-size: 13px; color: #555; background: #f8f9fa; padding: 12px; border-radius: 6px; max-height: 200px; overflow-y: auto; display: none; text-align: left; border: 1px solid #ddd;"></div>
+        </div>
+
+        <div class="card" style="border-top-color: #27ae60;">
+            <h2>📁 2. 手動上傳路線包 (首次建檔用)</h2>
+            <p style="font-size: 14px; color: #666;">如果您在主機端做好了全新的路線，請上傳由主機匯出的 <b>Backup.json</b>，上傳後本站所有公車將自動同步這些路線。</p>
             <input type="file" id="route-json-input" accept=".json" style="display:none" onchange="uploadRoutePackage(this)">
-            <button class="btn" style="background:#27ae60;" onclick="document.getElementById('route-json-input').click()">📤 上傳 JSON 路線包</button>
+            <button class="btn" style="background:#27ae60;" onclick="document.getElementById('route-json-input').click()">📤 選擇 Backup.json 上傳</button>
             <p id="route-status" style="font-size:14px; font-weight:bold; color:#e67e22; margin-top:10px;">目前雲端狀態：尚未上傳</p>
         </div>
 
         <div class="card" style="border-top-color: #e67e22;">
-            <h2>🚌 2. 本站車輛管理 (鎖定車號)</h2>
+            <h2>🚌 3. 本站車輛管理 (鎖定車號)</h2>
             <p style="font-size: 14px; color: #666;">登記在下方的車號，才有權限登入本站並下載資料。司機無法自行新增車號。</p>
             <div style="display:flex; gap:10px;">
                 <input type="text" id="new-bus-id" class="input-field" placeholder="新增車號 (例: 9527)" style="margin:0;">
@@ -92,7 +116,7 @@
         </div>
 
         <div class="card" style="border-top-color: #8e44ad;">
-            <h2>⚙️ 3. 全車隊廣播參數強制設定</h2>
+            <h2>⚙️ 4. 全車隊廣播參數強制設定</h2>
             <p style="font-size: 14px; color: #666;">修改後按下儲存，本站所有在外行駛的公車與遙控器，將立刻套用此設定。</p>
             
             <div class="setting-row">
@@ -127,14 +151,14 @@
         </div>
 
         <div class="card" style="border-top-color: #2980b9;">
-            <h2>🎵 4. 全站語音包派發 (自動同步)</h2>
+            <h2>🎵 5. 全站語音包派發 (自動同步)</h2>
             <p style="font-size: 14px; color: #666;">設定 GitHub 語音包來源。儲存後，只要司機連線上線，遙控器就會全自動在背景下載並覆蓋語音，司機免操作！</p>
             <input type="text" id="set-gh-url" class="input-field" placeholder="GitHub 專案連結 (例: https://github.com/...)">
             <input type="password" id="set-gh-token" class="input-field" placeholder="GitHub 金鑰 (ghp_...)">
             <button class="btn" style="background:#2980b9;" onclick="saveAudioConfig()">🚀 儲存並強制派發語音</button>
         </div>
-      <div class="card" style="border-top-color: #e84393;">
-            <h2>🎬 5. 全站影片包派發 (一鍵同步)</h2>
+        <div class="card" style="border-top-color: #e84393;">
+            <h2>🎬 6. 全站影片包派發 (一鍵同步)</h2>
             <p style="font-size: 14px; color: #666;">設定 GitHub 影片包來源 (根目錄需有 <b>video.zip</b>)。儲存後，主機會出現雲端同步按鈕，司機點擊即可全自動下載解壓！</p>
             <input type="text" id="set-gh-video-url" class="input-field" placeholder="GitHub 影片專案連結 (例: https://github.com/...)">
             <input type="password" id="set-gh-video-token" class="input-field" placeholder="GitHub 金鑰 (ghp_...)">
@@ -178,7 +202,6 @@
         const pwd = document.getElementById('station-pwd').value.trim();
         if(!sid || !pwd) return alert("請輸入代號與密碼！");
 
-        // ✨ 特殊隱藏帳號：超級管理員
         if (sid.toLowerCase() === 'admin') {
             const adminRef = ref(db, 'admin_password');
             const adminSnap = await get(adminRef);
@@ -199,13 +222,11 @@
             return;
         }
 
-        // 一般調度站登入
         const stationRef = ref(db, `stations/${sid}`);
         const snapshot = await get(stationRef);
         
         if (snapshot.exists()) {
             const stationData = snapshot.val();
-            // 檢查是否已經設定過密碼
             if (stationData.password) {
                 if (stationData.password === pwd) {
                     unlockDashboard(sid);
@@ -213,7 +234,6 @@
                     alert("❌ 密碼錯誤！");
                 }
             } else {
-                // 站點存在，但還沒設定密碼 (第一次登入)
                 if(confirm("此為該站點首次登入，將把您剛剛輸入的密碼設為專屬密碼，確定嗎？")) {
                     await set(ref(db, `stations/${sid}/password`), pwd);
                     await set(ref(db, `stations/${sid}/settings`), { l1:'zh', l2:'en', l3:'tw', l4:'none', format:'auto', mode:'all' });
@@ -222,18 +242,15 @@
                 }
             }
         } else {
-            // 🛑 禁止自動建立，提示找管理員
             alert("❌ 此調度站尚未開通！\n請聯繫管理員為您建立站點權限。");
         }
     };
 
-    // 👑 解鎖超級管理員畫面
     function unlockSuperAdmin() {
         document.getElementById('login-section').style.display = 'none';
         document.getElementById('super-admin-section').style.display = 'block';
         document.getElementById('main-title').innerText = `👑 系統總管 (Admin)`;
 
-        // 監聽所有站點列表
         onValue(ref(db, 'stations'), (snap) => {
             const list = document.getElementById('admin-station-list');
             list.innerHTML = '';
@@ -248,22 +265,16 @@
         });
     }
 
-    // ➕ 管理員建立新站點 (只給權限，不設密碼)
     window.createNewStation = async function() {
         const id = document.getElementById('new-station-id').value.trim();
         if(!id) return alert("請填寫站點代號！");
-
         const snap = await get(ref(db, `stations/${id}`));
         if(snap.exists()) return alert("❌ 此站點已經存在！");
-
-        // 建立一個初始狀態，讓站務員可以第一次登入
         await set(ref(db, `stations/${id}/status`), 'pending');
-        
         showToast(`✅ 成功開通站點權限：${id}`);
         document.getElementById('new-station-id').value = '';
     }
 
-    // 🗑️ 管理員刪除站點
     window.deleteStation = async function(id) {
         if(confirm(`⚠️ 警告：確定要徹底刪除調度站 [${id}] 嗎？\n刪除後，該站所有路線與車輛都會失效！`)) {
             await remove(ref(db, `stations/${id}`));
@@ -278,6 +289,10 @@
         document.getElementById('dashboard-section').style.display = 'block';
         document.getElementById('main-title').innerText = `🏢 站點後台: ${sid}`;
         
+        // ✨ 自動載入已儲存的 TDX 金鑰
+        document.getElementById('tdx-id').value = localStorage.getItem('admin_tdx_id') || '';
+        document.getElementById('tdx-secret').value = localStorage.getItem('admin_tdx_secret') || '';
+
         onValue(ref(db, `stations/${sid}/buses`), (snap) => {
             const buses = snap.val() || {};
             renderBusList(Object.keys(buses));
@@ -302,15 +317,7 @@
                 document.getElementById('set-gh-token').value = cfg.token || '';
             }
         });
-      // 讀取雲端影片包設定
-        onValue(ref(db, `stations/${sid}/video_config`), (snap) => {
-            if(snap.exists()) {
-                const cfg = snap.val();
-                document.getElementById('set-gh-video-url').value = cfg.url || '';
-                document.getElementById('set-gh-video-token').value = cfg.token || '';
-            }
-        });
-      // 讀取雲端影片包設定
+
         onValue(ref(db, `stations/${sid}/video_config`), (snap) => {
             if(snap.exists()) {
                 const cfg = snap.val();
@@ -319,7 +326,6 @@
             }
         });
 
-        // 👇👇👇 從這裡開始是你剛剛貼上的地圖引擎 👇👇👇
         // 🗺️ 啟動 FMS 即時地圖引擎
         setTimeout(() => {
             if (!window.fmsMap) {
@@ -328,54 +334,277 @@
                 window.busMarkers = {};
             }
 
-            // 📡 監聽本站所有車輛的 GPS 與事件
+            // 📡 監聽本站所有車輛的 GPS 與即時動態 (企業級 FMS 渲染引擎)
+            window._isAutoFollowing = false; // 智慧視角標記
+
             onValue(ref(db, `stations/${sid}/fleet`), (snap) => {
                 if (snap.exists()) {
                     const fleet = snap.val();
-                    let bounds = [];
+                    let currentBounds = [];
                     
                     for (let busId in fleet) {
                         const data = fleet[busId];
                         const lat = data.lat; const lon = data.lon;
                         if (!lat || !lon) continue;
                         
+                        // 1. 數據解析 (新增 Heading 與 Speed)
+                        const heading = data.heading || 0; 
+                        const speed = Math.round(data.speed || 0); 
+                        
                         // 判斷車輛狀態 (超過 3 分鐘沒更新算斷線)
                         const isOffline = (Date.now() - data.timestamp) > 180000;
                         let statusColor = isOffline ? '#95a5a6' : (data.isTracking ? '#2ecc71' : '#f39c12');
                         let statusText = isOffline ? '失去連線' : (data.isTracking ? '行駛中' : '未啟動導航');
 
-                        // 製作超帥的公車標籤 icon
+                        // 2. ✨ 超專業 FMS 車頭轉向 Icon ✨
                         const customIcon = L.divIcon({
-                            className: 'custom-bus-marker',
-                            html: `<div style="background-color:${statusColor}; color:white; padding:5px 10px; border-radius:20px; font-size:14px; font-weight:bold; border:2px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.3); text-align:center; white-space:nowrap;">🚌 ${busId}</div>`,
-                            iconSize: [80, 30],
-                            iconAnchor: [40, 15]
+                            className: '', 
+                            iconSize: [100, 100], 
+                            iconAnchor: [50, 50], 
+                            html: `
+                                <div class="fms-bus-marker-container">
+                                    <div class="fms-bus-arrow" style="background-color:${statusColor}; transform: rotate(${heading}deg);">
+                                        <svg class="fms-bus-arrow-svg" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"></path></svg>
+                                    </div>
+                                    <div class="fms-bus-label">
+                                        🚌 ${busId}
+                                        <span class="fms-bus-speed">${isOffline ? '(斷線)' : speed + ' km/h'}</span>
+                                    </div>
+                                </div>
+                            `
                         });
                         
+                        // 3. 泡泡彈窗資訊 (增加時速顯示)
                         let popupHtml = `<div style="font-size:14px; line-height:1.6;">
-                                         <b style="font-size:16px; color:#333;">🚌 車號: ${busId}</b><br>
+                                         <b style="font-size:17px; color:#333; margin-bottom:5px; display:block;">🚌 車號: ${busId}</b>
+                                         <div style="background:#eee; padding:5px 10px; border-radius:6px; margin-bottom:5px;">
+                                            <b>即時時速:</b> <b style="color:#e67e22; font-size:18px;">${isOffline ? '---' : speed}</b> km/h<br>
+                                            <b>車頭角度:</b> ${heading}°
+                                         </div>
                                          <b>狀態:</b> <span style="color:${statusColor}; font-weight:bold;">${statusText}</span><br>
-                                         <b>路線:</b> ${data.routeName} (${data.direction === 'outbound' ? '去程' : '返程'})<br>
-                                         <b>動態:</b> <span style="color:#e74c3c; font-weight:bold;">${data.event}</span><br>
+                                         <b>路線:</b> ${data.routeName || '未載入'} (${data.direction === 'outbound' ? '去程' : '返程'})<br>
+                                         <b>動態:</b> <span style="color:#e74c3c; font-weight:bold;">${data.event || '待命'}</span><br>
                                          <b>更新時間:</b> ${new Date(data.timestamp).toLocaleTimeString()}
                                          </div>`;
 
-                        // 如果地圖上已經有這台車，移除舊的，畫上新的
-                        if (window.busMarkers[busId]) { window.fmsMap.removeLayer(window.busMarkers[busId]); }
-                        
-                        window.busMarkers[busId] = L.marker([lat, lon], {icon: customIcon}).addTo(window.fmsMap).bindPopup(popupHtml);
-                        bounds.push([lat, lon]);
+                        // 4. 更新地圖圖層
+                        if (window.busMarkers[busId]) { 
+                            window.busMarkers[busId].setLatLng([lat, lon]); 
+                            window.busMarkers[busId].setIcon(customIcon);
+                            window.busMarkers[busId].getPopup().setContent(popupHtml); 
+                        } else {
+                            // 第一次畫車，並加入點擊事件 (智慧視角鎖定)
+                            window.busMarkers[busId] = L.marker([lat, lon], {icon: customIcon})
+                                .addTo(window.fmsMap)
+                                .bindPopup(popupHtml)
+                                .on('click', (e) => {
+                                    window._isAutoFollowing = true; 
+                                    window._followingBusId = busId; 
+                                    showToast(`👁️ 已鎖定視角至車輛 ${busId}，地圖將自動跟隨`);
+                                });
+                        }
+                        currentBounds.push([lat, lon]);
+                    }
+
+                    // 5. ✨ FMS 智慧視角跟隨引擎 ✨
+                    if (window._isAutoFollowing && window._followingBusId && window.busMarkers[window._followingBusId]) {
+                        window.fmsMap.panTo(window.busMarkers[window._followingBusId].getLatLng(), { animate: true, duration: 1 });
+                    } else if (!window._isAutoFollowing && currentBounds.length > 0) {
+                        if (!window._firstTimeBounds) {
+                             window.fmsMap.fitBounds(currentBounds, { padding: [50, 50], animate: true });
+                             window._firstTimeBounds = true; 
+                        }
                     }
                 }
             });
+
+            // 🖱️ 智慧視角手動解鎖
+            window.fmsMap.on('dragstart zoomstart', (e) => {
+                if (window._isAutoFollowing) {
+                    window._isAutoFollowing = false;
+                    window._followingBusId = null;
+                    showToast("👁️ 已手動解除視角鎖定");
+                }
+            });
+
         }, 800);
-        // 👆👆👆 地圖引擎到這裡結束 👆👆👆
-
-    } // 👈 這是 unlockDashboard 函數原本的最後一個大括號！(非常重要，一定要包在裡面)
-
-    window.addBusToStation = async function() {
     }
 
+    // ==========================================
+    // 🌐 核心：TDX 一鍵自動巡邏與智慧繼承引擎
+    // ==========================================
+    
+    async function getTdxToken() {
+        const id = document.getElementById('tdx-id').value.trim();
+        const secret = document.getElementById('tdx-secret').value.trim();
+        if(!id || !secret) return null;
+        
+        localStorage.setItem('admin_tdx_id', id);
+        localStorage.setItem('admin_tdx_secret', secret);
+
+        try {
+            const params = new URLSearchParams(); 
+            params.append('grant_type', 'client_credentials'); 
+            params.append('client_id', id); 
+            params.append('client_secret', secret);
+            const response = await fetch('https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token', { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, 
+                body: params 
+            });
+            const data = await response.json(); 
+            return data.access_token || null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function addTdxLog(msg, color = "#333") {
+        const logBox = document.getElementById('tdx-log');
+        logBox.style.display = 'block';
+        logBox.innerHTML += `<div style="color:${color}; margin-bottom:6px; border-bottom: 1px dashed #eee; padding-bottom: 4px;">${msg}</div>`;
+        logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    const inheritSettings = (oldStops, newStops) => {
+        if (!oldStops || oldStops.length === 0) return;
+        let settingDict = {};
+        oldStops.forEach(oldStop => {
+            settingDict[oldStop.nameZH] = {
+                file: oldStop.file, exitFile: oldStop.exitFile, split: oldStop.split, muted: oldStop.muted, isWaypoint: oldStop.isWaypoint
+            };
+        });
+        newStops.forEach(newStop => {
+            let savedSetting = settingDict[newStop.nameZH];
+            if (savedSetting) {
+                newStop.file = savedSetting.file || "";
+                newStop.exitFile = savedSetting.exitFile || "";
+                newStop.split = savedSetting.split || false;
+                newStop.muted = savedSetting.muted || false;
+                newStop.isWaypoint = savedSetting.isWaypoint || false;
+            }
+        });
+    };
+
+    window.batchUpdateTDX = async function() {
+        const token = await getTdxToken();
+        if (!token) {
+            alert("❌ TDX 金鑰錯誤或未填寫！");
+            return;
+        }
+
+        const logBox = document.getElementById('tdx-log');
+        logBox.innerHTML = '';
+        addTdxLog("🔄 開始從 Firebase 載入目前現有的路線設定...");
+
+        const snap = await get(ref(db, `stations/${currentStation}/routes`));
+        if (!snap.exists() || !snap.val()) {
+            addTdxLog("⚠️ 雲端尚無任何路線資料，請先透過『手動上傳 Backup.json』建立基準檔。", "#e74c3c");
+            return;
+        }
+        
+        let cloudRoutes = snap.val();
+        let updatedCount = 0;
+
+        addTdxLog(`✅ 成功載入 ${cloudRoutes.length} 條路線，準備向 TDX 發送更新請求...`, "#27ae60");
+
+        for (let i = 0; i < cloudRoutes.length; i++) {
+            let oldRoute = cloudRoutes[i];
+            
+            // 嘗試解析出路線名稱跟城市 (假設在主機儲存時名稱為 "台北市 307路")
+            let parts = oldRoute.name.split(' ');
+            if (parts.length < 2) {
+                addTdxLog(`⏭️ 略過：[${oldRoute.name}] 名稱格式不符，請確保包含城市名與空格`);
+                continue;
+            }
+            
+            let cityZh = parts[0];
+            let routeName = parts[1];
+            
+            const cityMap = { '台北市':'Taipei', '新北市':'NewTaipei', '桃園市':'Taoyuan', '台中市':'Taichung', '台南市':'Tainan', '高雄市':'Kaohsiung', '基隆市':'Keelung', '新竹市':'Hsinchu', '新竹縣':'HsinchuCounty', '苗栗縣':'MiaoliCounty', '彰化縣':'ChanghuaCounty', '南投縣':'NantouCounty', '雲林縣':'YunlinCounty', '嘉義縣':'ChiayiCounty', '嘉義市':'Chiayi', '屏東縣':'PingtungCounty', '宜蘭縣':'YilanCounty', '花蓮縣':'HualienCounty', '台東縣':'TaitungCounty', '公路客運':'InterCity' };
+            let cityCode = cityMap[cityZh];
+            
+            if (!cityCode) {
+                addTdxLog(`⏭️ 略過：[${oldRoute.name}] 找不到對應的城市代碼`);
+                continue;
+            }
+
+            addTdxLog(`📡 正在向 TDX 請求最新站點：<b>${oldRoute.name}</b>...`);
+            
+            try {
+                const apiUrl = cityCode === 'InterCity' 
+                    ? `https://tdx.transportdata.tw/api/basic/v2/Bus/StopOfRoute/InterCity/${routeName}?%24format=JSON` 
+                    : `https://tdx.transportdata.tw/api/basic/v2/Bus/StopOfRoute/City/${cityCode}/${routeName}?%24format=JSON`;
+                
+                const response = await fetch(apiUrl, { headers: { 'Authorization': `Bearer ${token}` } });
+                const tdxData = await response.json();
+                
+                if (!tdxData || tdxData.length === 0) {
+                    addTdxLog(`❌ 查無此路線最新資料，保留舊設定。`, "#e74c3c");
+                    continue;
+                }
+
+                // 過濾副線，找最符合的
+                let targetData = tdxData.filter(r => r.SubRouteName && r.SubRouteName.Zh_tw === routeName);
+                if (targetData.length === 0) targetData = tdxData;
+
+                let newOutbound = []; let newInbound = [];
+                let foundOut = false; let foundIn = false;
+                
+                targetData.forEach(r => {
+                    const isOutbound = r.Direction === 0;
+                    if (isOutbound && foundOut) return; if (!isOutbound && foundIn) return;
+                    if (isOutbound) foundOut = true; if (!isOutbound) foundIn = true;
+                    
+                    let c = 0;
+                    r.Stops.forEach(st => {
+                        c++;
+                        let newStop = {
+                            id: c, nameZH: st.StopName.Zh_tw||"", nameEN: st.StopName.En||"", 
+                            lat: st.StopPosition.PositionLat.toString(), lon: st.StopPosition.PositionLon.toString(), 
+                            rad: "150", time: "", enabled: true, muted: false, isCheckpoint: false, isWaypoint: false, split: false, file: "", exitFile: ""
+                        };
+                        if (isOutbound) newOutbound.push(newStop); else newInbound.push(newStop);
+                    });
+                });
+
+                // 🌟 執行智慧繼承 (把舊的影片與設定轉移到新抓下來的陣列上)
+                if (oldRoute.outbound && oldRoute.outbound.stops) inheritSettings(oldRoute.outbound.stops, newOutbound);
+                if (oldRoute.inbound && oldRoute.inbound.stops) inheritSettings(oldRoute.inbound.stops, newInbound);
+
+                // 正式更新這條路線的記憶體資料
+                oldRoute.outbound.stops = newOutbound;
+                oldRoute.outbound.stopCounter = newOutbound.length;
+                if(newOutbound.length > 0) { oldRoute.outbound.destZH = newOutbound[newOutbound.length-1].nameZH; oldRoute.outbound.destEN = newOutbound[newOutbound.length-1].nameEN; }
+                
+                oldRoute.inbound.stops = newInbound;
+                oldRoute.inbound.stopCounter = newInbound.length;
+                if(newInbound.length > 0) { oldRoute.inbound.destZH = newInbound[newInbound.length-1].nameZH; oldRoute.inbound.destEN = newInbound[newInbound.length-1].nameEN; }
+                
+                oldRoute.timestamp = new Date().toLocaleString();
+                
+                addTdxLog(`✅ <b>更新成功！</b> 去程 ${newOutbound.length} 站, 回程 ${newInbound.length} 站`, "#27ae60");
+                updatedCount++;
+
+            } catch (e) {
+                addTdxLog(`❌ 下載失敗 [${oldRoute.name}]: 網路或 API 錯誤`, "#e74c3c");
+            }
+        }
+
+        if (updatedCount > 0) {
+            addTdxLog(`💾 正在將 ${updatedCount} 條已更新路線打包，準備覆蓋回 Firebase 雲端...`);
+            await set(ref(db, `stations/${currentStation}/routes`), cloudRoutes);
+            addTdxLog(`🎉 <b>派發完成！</b> 所有在外車輛將在幾秒內自動完成背景同步。`, "#2980b9");
+            showToast(`✅ 成功更新並派發 ${updatedCount} 條路線！`);
+        } else {
+            addTdxLog(`⚠️ 本次檢查無任何路線被更新。`, "#e67e22");
+        }
+    };
+
+    // ==========================================
+    // 一般管理功能
+    // ==========================================
+    
     window.addBusToStation = async function() {
         const busId = document.getElementById('new-bus-id').value.trim();
         if(!busId) return;
@@ -409,7 +638,7 @@
                 const routeData = JSON.parse(e.target.result);
                 if(!Array.isArray(routeData)) throw new Error("JSON 格式錯誤 (非陣列)");
                 await set(ref(db, `stations/${currentStation}/routes`), routeData);
-                showToast(`✅ 成功上傳 ${routeData.length} 條路線至雲端！`);
+                showToast(`✅ 成功上傳 ${routeData.length} 條基準路線至雲端！`);
             } catch(err) {
                 alert("❌ 上傳失敗，請確認是否為正確的 Backup.json");
             }
@@ -440,7 +669,8 @@
         await set(ref(db, `stations/${currentStation}/audio_config`), { url: url, token: token });
         showToast("✅ 語音包來源已更新，車機連線時將自動下載！");
     };
-  window.saveVideoConfig = async function() {
+    
+    window.saveVideoConfig = async function() {
         const url = document.getElementById('set-gh-video-url').value.trim();
         const token = document.getElementById('set-gh-video-token').value.trim();
         if (!url || !token) { alert("請填寫完整的影片連結與金鑰！"); return; }
