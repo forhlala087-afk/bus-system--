@@ -131,8 +131,11 @@
         const app = initializeApp(firebaseConfig); const db = getDatabase(app);
         
         let isConnected = false; let currentBusId = ""; let currentStationId = ""; 
-        let unsubscribeState = null; let unsubscribeAudio = null; let unsubscribeSettings = null; let unsubscribeAudioConfig = null;
+        let unsubscribeState = null; let unsubscribeAudio = null; let unsubscribeSettings = null; let unsubscribeAudioConfig = null; let unsubscribeAntiHijack = null;
         let gpsWatchId = null; let gpsIntervalId = null; let isGpsActive = false; let wakeLock = null; let heartbeatInterval = null;
+
+        // ✨ 產生這台遙控器本次登入的專屬 Session ID (防搶奪用)
+        window._mySessionId = "REMOTE_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
 
         window.pidsAssets = { common: {}, zh: {}, en: {}, tw: {}, hk: {}, yue: {} };
         let pidsPlayQueue = []; window.pidsIsPlaying = false; let pidsAnnounceId = 0;
@@ -157,7 +160,6 @@
             if (!isGpsActive) window.toggleGPS();
         };
 
-        // ★ 確保這段函式有被定義：用來顯示警告與提示
         window.showToast = function(m) { 
             const t = document.getElementById('toast'); 
             t.innerText = m; 
@@ -194,6 +196,9 @@
                     return; 
                 }
 
+                // ✨ 每次登入重新產生 Session ID，避免舊分頁干擾
+                window._mySessionId = "REMOTE_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+
                 localStorage.setItem('remote_saved_bus_id', currentBusId);
                 localStorage.setItem('remote_saved_station_id', currentStationId);
 
@@ -202,6 +207,18 @@
                 document.getElementById('control-panel').classList.add("active");
                 document.getElementById('status-panel').style.display = "block";
                 window.showToast("✅ 已連線，播音系統解鎖成功！");
+
+                // 🛡️ 啟動防搶奪監聽引擎
+                unsubscribeAntiHijack = onValue(ref(db, `buses/${currentBusId}/remote_status`), (snap) => {
+                    if (snap.exists()) {
+                        const data = snap.val();
+                        // 如果雲端上的 sessionId 不是我的，代表別人登入了！
+                        if (data.sessionId && data.sessionId !== window._mySessionId) {
+                            alert("⚠️ 系統警告：已有另一台裝置登入此車號！\n為了避免干擾主機，您的遙控器已被強制登出。");
+                            window.location.reload(); // 💣 直接重整網頁，切斷所有連線與定時器
+                        }
+                    }
+                });
 
                 listenToHostState();
                 listenToAudioTrigger();
@@ -221,7 +238,14 @@
                     }
                 });
                 
-                heartbeatInterval = setInterval(() => { set(ref(db, 'buses/' + currentBusId + '/remote_status'), { alive: true, timestamp: Date.now() }).catch(e=>{}); }, 3000);
+                // ✨ 升級版的心跳發送器 (每 3 秒發送一次，且附帶防搶奪身分證)
+                heartbeatInterval = setInterval(() => { 
+                    set(ref(db, 'buses/' + currentBusId + '/remote_status'), { 
+                        alive: true, 
+                        sessionId: window._mySessionId, // 遞出身分證
+                        timestamp: Date.now() 
+                    }).catch(e=>{}); 
+                }, 3000); 
             } else {
                 busInput.disabled = false; stationInput.disabled = false; isConnected = false; 
                 btn.innerText = "連線上線"; btn.classList.remove("connected");
@@ -230,6 +254,7 @@
                 if(unsubscribeAudio) { unsubscribeAudio(); unsubscribeAudio = null; }
                 if(unsubscribeSettings) { unsubscribeSettings(); unsubscribeSettings = null; }
                 if(unsubscribeAudioConfig) { unsubscribeAudioConfig(); unsubscribeAudioConfig = null; }
+                if(unsubscribeAntiHijack) { unsubscribeAntiHijack(); unsubscribeAntiHijack = null; } // 關閉防搶奪監聽
                 if(heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
             }
         };
@@ -326,7 +351,6 @@
         function triggerRemoteAnnouncement(data) {
             pidsAnnounceId++; const myId = pidsAnnounceId;
             
-            // 🛑 安卓防卡死 1：徹底切斷上一句的聲音與回呼
             if (window.speechSynthesis) window.speechSynthesis.cancel();
             try { 
                 globalPlayer.pause(); 
@@ -374,11 +398,9 @@
             processPidsQueue(myId);
         }
 
-        // ★ 安卓/通用防卡死播放引擎：解決重疊與 TTS 當機問題
-        window._currentTTS = null; // 🛑 防止 Android Chrome 吃掉語音回呼的關鍵變數
+        window._currentTTS = null; 
 
         async function processPidsQueue(announceId) {
-            // 如果這期間被新的站點打斷，直接放棄這串舊任務
             if (announceId !== pidsAnnounceId) return; 
             
             if (pidsPlayQueue.length === 0) {
@@ -395,7 +417,7 @@
                 
                 globalPlayer.onended = () => { 
                     globalPlayer.onended = null;
-                    processPidsQueue(announceId); // 播完立刻接下一首
+                    processPidsQueue(announceId); 
                 };
                 globalPlayer.onerror = () => { 
                     globalPlayer.onerror = null;
@@ -405,14 +427,13 @@
                 try {
                     await globalPlayer.play();
                 } catch(e) {
-                    // 若因為快速切換導致被中斷，直接換下一首
                     processPidsQueue(announceId);
                 }
 
             } else if (item.type === 'tts') {
                 if (window.speechSynthesis) {
                     const u = new SpeechSynthesisUtterance(item.text);
-                    window._currentTTS = u; // 🛑 核心解法：強制保存在全域，避免 Android 記憶體回收導致卡死
+                    window._currentTTS = u; 
                     u.lang = item.lang || 'zh-TW';
                     u.rate = 0.9;
                     u.volume = window._globalVolume;
@@ -426,12 +447,10 @@
                         processPidsQueue(announceId); 
                     };
                     
-                    // 加上延遲與防呆，避免 Android 語音引擎打架
                     setTimeout(() => {
                         if (announceId === pidsAnnounceId) {
                             window.speechSynthesis.speak(u);
                             
-                            // 終極防呆：如果 8 秒後 onend 還是沒觸發（Android 偶發性裝死），強制解鎖跳下一句
                             setTimeout(() => {
                                 if (window._currentTTS === u) {
                                     console.warn("TTS 逾時無回應，強制解鎖");
@@ -456,7 +475,6 @@
             }, 300);
         }
 
-        // ★ 已修復：找回了被誤刪的同步函數
         window.manualSyncGitHub = function() {
             const urlInput = document.getElementById('gh-repo-url').value.trim(); 
             const tokenInput = document.getElementById('gh-token').value.trim();
@@ -538,7 +556,6 @@
             overlay.style.display = 'none'; input.value = '';
         };
 
-        // ★ 加上了防止未連線亂按的防呆機制，再也不會跳紅色叉叉了！
         window.sendCommand = (type) => {
             if (!isConnected) return window.showToast("⚠️ 請先連線上線！");
             
