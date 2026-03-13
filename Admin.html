@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>🚌 客運調度站 - 站務後台管理系統</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f4f6f9; color: #333; margin: 0; padding: 20px; }
     h1 { text-align: center; color: #2c3e50; margin-bottom: 30px; }
@@ -67,6 +69,11 @@
     <div id="dashboard-section">
         
         <div class="card" style="border-top-color: #27ae60;">
+          <div class="card" style="border-top-color: #3498db; padding: 10px;">
+            <h2 style="padding: 10px 10px 0 10px; border-bottom: none; margin-bottom: 5px;">🗺️ 站點車隊戰情室 (即時動態)</h2>
+            <p style="font-size: 13px; color: #666; margin: 0 0 10px 10px;">顯示本站所有營運中車輛。綠色=導航中，橘色=待命中，灰色=斷線(超過3分鐘無訊號)</p>
+            <div id="fms-map" style="width: 100%; height: 450px; border-radius: 8px; z-index: 1;"></div>
+        </div>
             <h2>📁 1. 派發全站路線包 (超級 JSON)</h2>
             <p style="font-size: 14px; color: #666;">請上傳由主機匯出的 <b>Backup.json</b>，上傳後本站所有公車將自動同步這些路線。</p>
             <input type="file" id="route-json-input" accept=".json" style="display:none" onchange="uploadRoutePackage(this)">
@@ -303,6 +310,70 @@
                 document.getElementById('set-gh-video-token').value = cfg.token || '';
             }
         });
+      // 讀取雲端影片包設定
+        onValue(ref(db, `stations/${sid}/video_config`), (snap) => {
+            if(snap.exists()) {
+                const cfg = snap.val();
+                document.getElementById('set-gh-video-url').value = cfg.url || '';
+                document.getElementById('set-gh-video-token').value = cfg.token || '';
+            }
+        });
+
+        // 👇👇👇 從這裡開始是你剛剛貼上的地圖引擎 👇👇👇
+        // 🗺️ 啟動 FMS 即時地圖引擎
+        setTimeout(() => {
+            if (!window.fmsMap) {
+                window.fmsMap = L.map('fms-map').setView([25.0478, 121.5170], 12);
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap' }).addTo(window.fmsMap);
+                window.busMarkers = {};
+            }
+
+            // 📡 監聽本站所有車輛的 GPS 與事件
+            onValue(ref(db, `stations/${sid}/fleet`), (snap) => {
+                if (snap.exists()) {
+                    const fleet = snap.val();
+                    let bounds = [];
+                    
+                    for (let busId in fleet) {
+                        const data = fleet[busId];
+                        const lat = data.lat; const lon = data.lon;
+                        if (!lat || !lon) continue;
+                        
+                        // 判斷車輛狀態 (超過 3 分鐘沒更新算斷線)
+                        const isOffline = (Date.now() - data.timestamp) > 180000;
+                        let statusColor = isOffline ? '#95a5a6' : (data.isTracking ? '#2ecc71' : '#f39c12');
+                        let statusText = isOffline ? '失去連線' : (data.isTracking ? '行駛中' : '未啟動導航');
+
+                        // 製作超帥的公車標籤 icon
+                        const customIcon = L.divIcon({
+                            className: 'custom-bus-marker',
+                            html: `<div style="background-color:${statusColor}; color:white; padding:5px 10px; border-radius:20px; font-size:14px; font-weight:bold; border:2px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.3); text-align:center; white-space:nowrap;">🚌 ${busId}</div>`,
+                            iconSize: [80, 30],
+                            iconAnchor: [40, 15]
+                        });
+                        
+                        let popupHtml = `<div style="font-size:14px; line-height:1.6;">
+                                         <b style="font-size:16px; color:#333;">🚌 車號: ${busId}</b><br>
+                                         <b>狀態:</b> <span style="color:${statusColor}; font-weight:bold;">${statusText}</span><br>
+                                         <b>路線:</b> ${data.routeName} (${data.direction === 'outbound' ? '去程' : '返程'})<br>
+                                         <b>動態:</b> <span style="color:#e74c3c; font-weight:bold;">${data.event}</span><br>
+                                         <b>更新時間:</b> ${new Date(data.timestamp).toLocaleTimeString()}
+                                         </div>`;
+
+                        // 如果地圖上已經有這台車，移除舊的，畫上新的
+                        if (window.busMarkers[busId]) { window.fmsMap.removeLayer(window.busMarkers[busId]); }
+                        
+                        window.busMarkers[busId] = L.marker([lat, lon], {icon: customIcon}).addTo(window.fmsMap).bindPopup(popupHtml);
+                        bounds.push([lat, lon]);
+                    }
+                }
+            });
+        }, 800);
+        // 👆👆👆 地圖引擎到這裡結束 👆👆👆
+
+    } // 👈 這是 unlockDashboard 函數原本的最後一個大括號！(非常重要，一定要包在裡面)
+
+    window.addBusToStation = async function() {
     }
 
     window.addBusToStation = async function() {
