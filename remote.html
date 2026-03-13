@@ -135,7 +135,11 @@
         let gpsWatchId = null; let gpsIntervalId = null; let isGpsActive = false; let wakeLock = null; let heartbeatInterval = null;
 
         // ✨ 產生這台遙控器本次登入的專屬 Session ID (防搶奪用)
-        window._mySessionId = "REMOTE_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+        window._mySessionId = localStorage.getItem('remote_device_session_id');
+        if (!window._mySessionId) {
+            window._mySessionId = "REMOTE_" + Date.now() + "_" + Math.floor(Math.random() * 10000);
+            localStorage.setItem('remote_device_session_id', window._mySessionId);
+        }
 
         window.pidsAssets = { common: {}, zh: {}, en: {}, tw: {}, hk: {}, yue: {} };
         let pidsPlayQueue = []; window.pidsIsPlaying = false; let pidsAnnounceId = 0;
@@ -196,10 +200,8 @@
                     return; 
                 }
 
-                // ✨ 每次登入重新產生 Session ID，避免舊分頁干擾
-                window._mySessionId = "REMOTE_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
-
-                localStorage.setItem('remote_saved_bus_id', currentBusId);
+                // ✨ 每次登入重新產生 Session ID，避免舊分頁干
+               localStorage.setItem('remote_saved_bus_id', currentBusId);
                 localStorage.setItem('remote_saved_station_id', currentStationId);
 
                 busInput.disabled = true; stationInput.disabled = true; isConnected = true;
