@@ -1578,7 +1578,7 @@
                     else if (!hasTriggeredAnyGlobal && closestValidStopIdx !== -1) { expectedNextIdx = closestValidStopIdx; } 
                     else { let searchStart = currentMaxIndex !== -1 ? currentMaxIndex + 1 : 0; for (let k = searchStart; k < window.stops.length; k++) { if (window.stops[k].enabled && !window.stops[k].mergedSkipped) { expectedNextIdx = k; break; } } }
                 }
-                wwindow.stops.forEach((stop, index) => checkDist(stop, lat, lon, index, expectedNextIdx, hasTriggeredAnyGlobal, closestValidStopIdx)); 
+                window.stops.forEach((stop, index) => checkDist(stop, lat, lon, index, expectedNextIdx, hasTriggeredAnyGlobal, closestValidStopIdx)); 
                 
                
             }
