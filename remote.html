@@ -162,6 +162,26 @@
 
             await loadAllPidsAudioFromDB();
             if (!isGpsActive) window.toggleGPS();
+
+            // 👇 新增：防幽靈機制 (螢幕關閉或切換 APP 時自動斬斷連線) 👇
+            document.addEventListener('visibilitychange', () => {
+                // 當網頁變成「不可見」(螢幕關閉、切換APP、滑回桌面) 且 目前是「連線狀態」
+                if (document.visibilityState === 'hidden' && isConnected) {
+                    
+                    // 1. 發送明確的「死亡宣告」給主機，讓主機立刻切回本機 GPS，不需等待 16 秒超時
+                    set(ref(db, 'buses/' + currentBusId + '/remote_status'), { 
+                        alive: false, 
+                        sessionId: window._mySessionId,
+                        timestamp: Date.now() 
+                    }).catch(e=>{});
+                    
+                    // 2. 徹底關閉遙控器端連線 (相當於幫司機按了「斷開連線」按鈕)
+                    window.toggleConnect();
+                    
+                    console.log("⚠️ 螢幕關閉，已自動斷開連線防干擾");
+                }
+            });
+            // 👆 防幽靈機制結束 👆
         };
 
         window.showToast = function(m) { 
