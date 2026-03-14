@@ -678,6 +678,7 @@
                 lat: window._lastValidLat,
                 lon: window._lastValidLon,
                 heading: window._currentHeading || 0,
+                speed: window._currentSpeed ? Math.round(window._currentSpeed * 3.6) : 0, // ✨ 將速度換算成 km/h 傳給戰情室
                 routeName: window.routeName || "---",
                 direction: window.currentDirection || "outbound",
                 currentStop: cStop,
@@ -1614,6 +1615,8 @@
         window.onLocationUpdate = function(pos) { 
             hasFirstFix = true; const lat = pos.coords.latitude; const lon = pos.coords.longitude; lastUpdateTimestamp = Date.now(); const d = new Date(); elLastTime.innerText = d.getHours() + ":" + d.getMinutes().toString().padStart(2,'0') + ":" + d.getSeconds().toString().padStart(2,'0'); 
             
+            window._currentSpeed = pos.coords.speed || 0; // ✨ 新增：抓取設備回傳的車速 (單位: m/s)
+
             if (window._lastValidLat !== null && window._lastValidLon !== null) {
                 let dDist = getDist(window._lastValidLat, window._lastValidLon, lat, lon);
                 if (dDist > 4) { window._currentHeading = getBearing(window._lastValidLat, window._lastValidLon, lat, lon); window._lastValidLat = lat; window._lastValidLon = lon; }
@@ -2240,14 +2243,25 @@
 
         function renderPidsRouteMap() {
             const container = document.getElementById('route-list-container-pids'); container.innerHTML = ''; 
-            let start = Math.max(0, window.pidsCurrentIndex - 1); let end = Math.min(window.stops.length - 1, window.pidsCurrentIndex + 3);
+            
+            // ✨ 智慧置頂邏輯：如果是「即將抵達」(!isNextStopMode)，就把當前站設為最頂部 (隱藏上一站)
+            // 如果是「下一站」(isNextStopMode)，則保留顯示一個上一站。
+            let start = window.isNextStopMode ? Math.max(0, window.pidsCurrentIndex - 1) : window.pidsCurrentIndex; 
+            
+            // 為了讓畫面保持飽滿，我們從 start 開始，固定往下顯示最多 3 個未來站 (畫面上總共 4 個站)
+            let end = Math.min(window.stops.length - 1, start + 3);
+            
             for (let i = start; i <= end; i++) {
                 const station = window.stops[i]; if(!station || !isPidsValid(station)) continue; 
                 const div = document.createElement('div'); div.className = 'stop-item-pids';
-                let lineHTML = ''; if (i > start || (start === 0 && i > 0)) lineHTML = '<div class="track-line-pids"></div>';
+                
+                // ✨ 修正連接線：確保顯示在「最頂部」的站點 (i === start)，絕對不會有往上延伸的灰線
+                let lineHTML = ''; if (i > start) lineHTML = '<div class="track-line-pids"></div>';
+                
                 if (i < window.pidsCurrentIndex) div.classList.add('past');
                 else if (i === window.pidsCurrentIndex) { div.classList.add('active'); if (window.isNextStopMode) div.classList.add('traveling'); else div.classList.add('arrived'); } 
                 else div.classList.add('future');
+                
                 div.innerHTML = `<div class="graphic-col-pids">${lineHTML}<div class="dot-pids"></div></div><div class="stop-text-group-pids"><p class="stop-name-zh-pids">${station.nameZH}</p><p class="stop-name-en-pids">${station.nameEN}</p></div>`;
                 container.appendChild(div);
             }
