@@ -597,12 +597,16 @@
             }
         };
 
+        // ✨ 新增例外狀態全域變數 (預設為正常)
+        window._currentSpecialStatus = 'normal';
+        window._specialStatusText = '';
+
         function executeRemoteCommand(cmd) {
             switch(cmd.action) {
                 case 'LOAD_ROUTE_DIR': 
-            if (window.isTrackingVideo || window.isTrackingPIDS) { window.stopTracking(); }
-            window.loadRoute(cmd.payload.id, cmd.payload.dir, true); 
-            break;
+                    if (window.isTrackingVideo || window.isTrackingPIDS) { window.stopTracking(); }
+                    window.loadRoute(cmd.payload.id, cmd.payload.dir, true); 
+                    break;
                 case 'TOGGLE_PIDS': window.toggleTracking('pids'); break;
                 case 'NEXT': pidsNextAction(); break;
                 case 'PREV': pidsPrevStop(); break;
@@ -642,6 +646,21 @@
                     if(video) video.volume = window._globalVolume;
                     showToast(`音量已調整: ${Math.round(cmd.payload*100)}%`);
                     break;
+                // ✨ 接收遙控器傳來的「異常狀態」指令
+                case 'SET_STATUS':
+                    window._currentSpecialStatus = cmd.payload.status;
+                    window._specialStatusText = cmd.payload.text;
+                    
+                    if (cmd.payload.status === 'normal') {
+                        showToast("🟢 接收遙控：恢復正常營運");
+                    } else {
+                        showToast(`⚠️ 接收遙控：${cmd.payload.text}`);
+                        // 如果原本是待命狀態，強迫喚醒定位發送災難位置
+                        if (!window.isTrackingVideo && !window.isTrackingPIDS) startWatcher(); 
+                    }
+                    
+                    if (window.reportFMS) window.reportFMS("狀態手動切換", true);
+                    break;
             }
         }
 
@@ -658,34 +677,40 @@
                 isPidsRunning: window.isTrackingPIDS,
                 timestamp: Date.now()
             });
-            
-            // ✨ 智慧判斷：如果導航有開就是行駛中，沒開就是待命
+            // ✨ 狀態切換時立刻通知戰情室
             let currentStatus = (window.isTrackingPIDS || window.isTrackingVideo) ? "行駛中" : "待命";
-            window.reportFMS(`狀態切換：${currentStatus}`, true); // 同步觸發 FMS 強制上傳
+            window.reportFMS(`狀態切換：${currentStatus}`, true);
         };
 
         // 📡 車隊管理系統 (FMS) 智慧回報引擎
         window._lastFmsTime = 0;
-        window.reportFMS = function(eventMsg = "行駛中", force = false) {
+        window.reportFMS = function(eventMsg = "正常", force = false) {
             if(!window._isHostConnected || !fbDb || !window._currentStationId || !window._lastValidLat) return;
             const now = Date.now();
             
-            // 💡 節流閥：如果不是強制事件(進出站)，且距離上次回報小於 20 秒，就扣留訊號不發送，節省流量
             if (!force && (now - window._lastFmsTime < 20000)) return; 
             window._lastFmsTime = now;
             
             let cStop = "準備中";
             if(window.stops && window.stops[window.pidsCurrentIndex]) { cStop = window.stops[window.pidsCurrentIndex].nameZH; }
             
+            // 🌟 霸王硬上弓邏輯：如果有「特殊狀態」，強制覆蓋回報文字！
+            let finalEventMessage = eventMsg;
+            if (window._currentSpecialStatus !== 'normal') {
+                finalEventMessage = window._specialStatusText;
+            } else if (eventMsg === "正常" && !(window.isTrackingVideo || window.isTrackingPIDS)) {
+                finalEventMessage = "待命";
+            }
+            
             fbSetRef(fbRef(fbDb, `stations/${window._currentStationId}/fleet/${window._currentBusId}`), {
                 lat: window._lastValidLat,
                 lon: window._lastValidLon,
                 heading: window._currentHeading || 0,
-                speed: window._currentSpeed ? Math.round(window._currentSpeed * 3.6) : 0, // ✨ 將速度換算成 km/h 傳給戰情室
+                speed: window._currentSpeed ? Math.round(window._currentSpeed * 3.6) : 0, 
                 routeName: window.routeName || "---",
                 direction: window.currentDirection || "outbound",
                 currentStop: cStop,
-                event: eventMsg,
+                event: finalEventMessage,
                 isTracking: (window.isTrackingPIDS || window.isTrackingVideo),
                 timestamp: now
             });
@@ -1531,9 +1556,9 @@
             checkIntervalId = setInterval(() => { 
                 monitorHealth(); 
                 
-                // 🚗 獨立的 FMS 背景心跳：不受 GPS 靜止影響，只要在導航中，就強制去撞節流閥 (滿20秒即發送)
-                if (window.isTrackingVideo || window.isTrackingPIDS) {
-                    window.reportFMS("正常", false);
+                // 🚗 獨立的 FMS 背景心跳：只要在導航中，或處於異常狀態，就強制撞節流閥 (滿20秒發送)
+                if (window.isTrackingVideo || window.isTrackingPIDS || window._currentSpecialStatus !== 'normal') {
+                    window.reportFMS("正常", false); 
                 }
 
                 if (!window._useRemoteGps && (window.isTrackingVideo||window.isTrackingPIDS) && (Date.now() - lastUpdateTimestamp > 1500)) { 
