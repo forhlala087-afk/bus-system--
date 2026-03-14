@@ -1530,7 +1530,7 @@
                 
                 // 🚗 獨立的 FMS 背景心跳：不受 GPS 靜止影響，只要在導航中，就強制去撞節流閥 (滿20秒即發送)
                 if (window.isTrackingVideo || window.isTrackingPIDS) {
-                    window.reportFMS("系統連線中", false);
+                    window.reportFMS("正常", false);
                 }
 
                 if (!window._useRemoteGps && (window.isTrackingVideo||window.isTrackingPIDS) && (Date.now() - lastUpdateTimestamp > 1500)) { 
