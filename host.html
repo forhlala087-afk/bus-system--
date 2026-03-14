@@ -1625,8 +1625,6 @@
             if (window.isTrackingVideo || window.isTrackingPIDS) { 
                 let hasTriggeredAnyGlobal = window.stops.some(s => s.enterTriggered);
                 let closestValidStopIdx = -1;
-                
-                // ✨ 完美的啟動找站邏輯 ✨
                 if (!hasTriggeredAnyGlobal && window.isSeqMode) {
                     let minDist = Infinity;
                     for (let k = 0; k < window.stops.length; k++) {
@@ -1636,7 +1634,6 @@
                         }
                     }
                 }
-                
                 let expectedNextIdx = -1;
                 if (window.isSeqMode) {
                     if (window._requireStrictStartIdx !== -1 && !window._hasPhysicallyEnteredReturnTrip) { expectedNextIdx = window._requireStrictStartIdx; } 
@@ -1644,6 +1641,8 @@
                     else { let searchStart = currentMaxIndex !== -1 ? currentMaxIndex + 1 : 0; for (let k = searchStart; k < window.stops.length; k++) { if (window.stops[k].enabled && !window.stops[k].mergedSkipped) { expectedNextIdx = k; break; } } }
                 }
                 window.stops.forEach((stop, index) => checkDist(stop, lat, lon, index, expectedNextIdx, hasTriggeredAnyGlobal, closestValidStopIdx)); 
+                
+               
             }
         }
 
@@ -1933,72 +1932,27 @@
                     saveCurrentToProject();
 
                     if (!stop.nameZH.includes('[影片開始]') && !stop.nameZH.includes('[影片結束]')) {
-                        // 先找出下一站的索引
-                        let nextPidsIdx = -1; 
-                        for (let j = index + 1; j < window.stops.length; j++) { 
-                            if (isPidsValid(window.stops[j])) { nextPidsIdx = j; break; } 
-                        }
-                        
                         if (window.isTrackingPIDS) {
+                            let nextPidsIdx = -1; for (let j = index + 1; j < window.stops.length; j++) { if (isPidsValid(window.stops[j])) { nextPidsIdx = j; break; } }
+                            
                             if (nextPidsIdx !== -1) {
-                                window.pidsCurrentIndex = nextPidsIdx; 
-                                window.isNextStopMode = true; 
-                                document.getElementById('status-text-pids').innerText = "下一站 | Next Stop"; 
-                                window.updatePidsDisplay(); 
-                                triggerPidsAnnouncement(window.pidsCurrentIndex, 'next');
+                                window.pidsCurrentIndex = nextPidsIdx; window.isNextStopMode = true; document.getElementById('status-text-pids').innerText = "下一站 | Next Stop"; updatePidsDisplay(); triggerPidsAnnouncement(window.pidsCurrentIndex, 'next');
                             } else {
-                                // 🏁 GPS自動版終點判斷：單向循環 vs 雙向循環
-                                if (window.currentDirection === 'outbound') {
-                                    if (window.projectData.inbound && window.projectData.inbound.stops.length > 0) {
-                                        window.promptDirectionSwitch('inbound');
-                                    } else {
-                                        if (window.isLoopMode) {
-                                            showToast("🔄 單向循環：自動接續下一趟！");
-                                            resetStopsState(); 
-                                            window.pidsCurrentIndex = window.stops.findIndex(s => isPidsValid(s));
-                                            window.isNextStopMode = true;
-                                            document.getElementById('status-text-pids').innerText = "下一站 | Next Stop";
-                                            window.updatePidsDisplay();
-                                            triggerPidsAnnouncement(window.pidsCurrentIndex, 'next');
-                                        } else {
-                                            pidsAnnounceId++; try{pidsGlobalAudio.pause();}catch(e){} if (window.speechSynthesis) window.speechSynthesis.cancel(); pidsPlayQueue = []; pushQA('common', '終點站到了', 0, true); window.pidsIsPlaying = false; processPidsQueue(pidsAnnounceId);
-                                        }
-                                    }
-                                } else { 
-                                    // 返程結束
-                                    if (window.isLoopMode) {
-                                        window.promptDirectionSwitch('outbound');
-                                    } else {
-                                        pidsAnnounceId++; try{pidsGlobalAudio.pause();}catch(e){} if (window.speechSynthesis) window.speechSynthesis.cancel(); pidsPlayQueue = []; pushQA('common', '終點站到了', 0, true); window.pidsIsPlaying = false; processPidsQueue(pidsAnnounceId);
-                                    }
-                                }
+                                if (window.currentDirection === 'outbound' && window.projectData.inbound && window.projectData.inbound.stops.length > 0) { window.promptDirectionSwitch('inbound'); } 
+                                else if (window.isLoopMode && window.currentDirection === 'inbound' && window.projectData.outbound && window.projectData.outbound.stops.length > 0) { window.promptDirectionSwitch('outbound'); } 
+                                else { pidsAnnounceId++; try{pidsGlobalAudio.pause();}catch(e){} if (window.speechSynthesis) window.speechSynthesis.cancel(); pidsPlayQueue = []; pushQA('common', '終點站到了', 0, true); window.pidsIsPlaying = false; processPidsQueue(pidsAnnounceId); }
                             }
                         } else {
-                            // 純影片導航模式的換向邏輯
+                            let nextPidsIdx = -1; for (let j = index + 1; j < window.stops.length; j++) { if (isPidsValid(window.stops[j])) { nextPidsIdx = j; break; } }
                             if (nextPidsIdx === -1) { 
-                                if (window.currentDirection === 'outbound') {
-                                    if (window.projectData.inbound && window.projectData.inbound.stops.length > 0) {
-                                        window.promptDirectionSwitch('inbound');
-                                    } else if (window.isLoopMode) {
-                                        showToast("🔄 單向循環：自動重啟！");
-                                        resetStopsState();
-                                    }
-                                } else { // 返程結束
-                                    if (window.isLoopMode) {
-                                        window.promptDirectionSwitch('outbound');
-                                    }
-                                }
+                                if (window.currentDirection === 'outbound' && window.projectData.inbound && window.projectData.inbound.stops.length > 0) { window.promptDirectionSwitch('inbound'); } 
+                                else if (window.isLoopMode && window.currentDirection === 'inbound' && window.projectData.outbound && window.projectData.outbound.stops.length > 0) { window.promptDirectionSwitch('outbound'); } 
                             }
                         }
                     }
                 }
             }
-            if (window.isTrackingVideo && stop.exitTriggered && currentPlayingId === stop.id) { 
-                const d = stop.entryLat ? getDist(curLat, curLon, stop.entryLat, stop.entryLon) : dist; 
-                if (d > (radius + 500)) { 
-                    if (!isStickyLoop && !window.isSeqMode) { closeVideo(); document.getElementById(`card-${stop.id}`).classList.remove('active-exit'); } 
-                } 
-            }
+            if (window.isTrackingVideo && stop.exitTriggered && currentPlayingId === stop.id) { const d = stop.entryLat ? getDist(curLat, curLon, stop.entryLat, stop.entryLon) : dist; if (d > (radius + 500)) { if (!isStickyLoop && !window.isSeqMode) { closeVideo(); document.getElementById(`card-${stop.id}`).classList.remove('active-exit'); } } }
         }
 
         // ✨ 影片輪播播放引擎 ✨
@@ -2290,19 +2244,41 @@
         function renderPidsRouteMap() {
             const container = document.getElementById('route-list-container-pids'); container.innerHTML = ''; 
             
-            // ✨ 智慧置頂邏輯：如果是「即將抵達」(!isNextStopMode)，就把當前站設為最頂部 (隱藏上一站)
-            // 如果是「下一站」(isNextStopMode)，則保留顯示一個上一站。
-            let start = window.isNextStopMode ? Math.max(0, window.pidsCurrentIndex - 1) : window.pidsCurrentIndex; 
+            let displayList = [];
             
-            // 為了讓畫面保持飽滿，我們從 start 開始，固定往下顯示最多 3 個未來站 (畫面上總共 4 個站)
-            let end = Math.min(window.stops.length - 1, start + 3);
+            // 1. 如果是「下一站」模式，往前找 1 個「有效的」上一站
+            if (window.isNextStopMode) {
+                for (let i = window.pidsCurrentIndex - 1; i >= 0; i--) {
+                    if (isPidsValid(window.stops[i])) { 
+                        displayList.push(i); 
+                        break; 
+                    }
+                }
+            }
             
-            for (let i = start; i <= end; i++) {
-                const station = window.stops[i]; if(!station || !isPidsValid(station)) continue; 
+            // 2. 加入當前站點
+            displayList.push(window.pidsCurrentIndex);
+            
+            // 3. 往後尋找，嚴格抓出「3 個有效的」未來站點 (略過影片虛擬站)
+            let futureCount = 0;
+            for (let i = window.pidsCurrentIndex + 1; i < window.stops.length; i++) {
+                if (isPidsValid(window.stops[i])) {
+                    displayList.push(i);
+                    futureCount++;
+                    if (futureCount >= 3) break; // 確保一定抓滿 3 個
+                }
+            }
+            
+            // 4. 開始依序渲染到畫面上
+            for (let k = 0; k < displayList.length; k++) {
+                const i = displayList[k];
+                const station = window.stops[i]; 
+                if(!station) continue; 
+                
                 const div = document.createElement('div'); div.className = 'stop-item-pids';
                 
-                // ✨ 修正連接線：確保顯示在「最頂部」的站點 (i === start)，絕對不會有往上延伸的灰線
-                let lineHTML = ''; if (i > start) lineHTML = '<div class="track-line-pids"></div>';
+                // ✨ 確保畫面上「第一個顯示」的站點，絕對不會有往上延伸的灰線
+                let lineHTML = ''; if (k > 0) lineHTML = '<div class="track-line-pids"></div>';
                 
                 if (i < window.pidsCurrentIndex) div.classList.add('past');
                 else if (i === window.pidsCurrentIndex) { div.classList.add('active'); if (window.isNextStopMode) div.classList.add('traveling'); else div.classList.add('arrived'); } 
@@ -2337,41 +2313,14 @@
                 if (currentStop) window.handleSplitScreen(currentStop, 'exit'); // 🧠 交給智慧中樞處理
                 
                 let nextIdx = -1; for(let i = window.pidsCurrentIndex + 1; i < window.stops.length; i++) { if (isPidsValid(window.stops[i])) { nextIdx = i; break; } }
-                if (nextIdx !== -1) { 
-                    window.pidsCurrentIndex = nextIdx; window.isNextStopMode = true; document.getElementById('status-text-pids').innerText = "下一站 | Next Stop"; window.updatePidsDisplay(); triggerPidsAnnouncement(window.pidsCurrentIndex, 'next'); 
-                } 
+                if (nextIdx !== -1) { window.pidsCurrentIndex = nextIdx; window.isNextStopMode = true; document.getElementById('status-text-pids').innerText = "下一站 | Next Stop"; window.updatePidsDisplay(); triggerPidsAnnouncement(window.pidsCurrentIndex, 'next'); } 
                 else {
-                    // 🏁 終點站智慧判斷：單向循環 vs 雙向循環
-                    if (window.currentDirection === 'outbound') {
-                        if (window.projectData.inbound && window.projectData.inbound.stops.length > 0) {
-                            // 去程結束，有返程資料 ➔ 切換至返程 (不管有沒有勾循環，去程跑完就是該跑返程)
-                            window.promptDirectionSwitch('inbound');
-                        } else {
-                            // 去程結束，沒有返程資料 (例如 112路)
-                            if (window.isLoopMode) {
-                                showToast("🔄 單向循環：自動接續下一趟！");
-                                resetStopsState(); 
-                                window.pidsCurrentIndex = window.stops.findIndex(s => isPidsValid(s));
-                                window.isNextStopMode = true;
-                                document.getElementById('status-text-pids').innerText = "下一站 | Next Stop";
-                                window.updatePidsDisplay();
-                                triggerPidsAnnouncement(window.pidsCurrentIndex, 'next');
-                            } else {
-                                pidsAnnounceId++; try{pidsGlobalAudio.pause();}catch(e){} if (window.speechSynthesis) window.speechSynthesis.cancel(); pidsPlayQueue = []; pushQA('common', '終點站到了', 0, true); window.pidsIsPlaying = false; processPidsQueue(pidsAnnounceId);
-                            }
-                        }
-                    } else { 
-                        // 目前是返程 (inbound) 結束
-                        if (window.isLoopMode) {
-                            // 雙向循環線 ➔ 返程跑完，自動跳轉回「去程」
-                            window.promptDirectionSwitch('outbound');
-                        } else {
-                            pidsAnnounceId++; try{pidsGlobalAudio.pause();}catch(e){} if (window.speechSynthesis) window.speechSynthesis.cancel(); pidsPlayQueue = []; pushQA('common', '終點站到了', 0, true); window.pidsIsPlaying = false; processPidsQueue(pidsAnnounceId);
-                        }
-                    }
+                    if (window.currentDirection === 'outbound' && window.projectData.inbound.stops.length > 0) { window.promptDirectionSwitch('inbound'); return; } 
+                    else if (window.isLoopMode) { if (window.currentDirection === 'inbound' && window.projectData.outbound.stops.length > 0) { window.promptDirectionSwitch('outbound'); return; } else { resetStopsState(); window.pidsCurrentIndex = window.stops.findIndex(s => isPidsValid(s)); window.isNextStopMode = true; document.getElementById('status-text-pids').innerText = "下一站 | Next Stop"; window.updatePidsDisplay(); triggerPidsAnnouncement(window.pidsCurrentIndex, 'next'); } } 
+                    else { pidsAnnounceId++; try{pidsGlobalAudio.pause();}catch(e){} if (window.speechSynthesis) window.speechSynthesis.cancel(); pidsPlayQueue = []; pushQA('common', '終點站到了', 0, true); window.pidsIsPlaying = false; processPidsQueue(pidsAnnounceId); }
                 }
             } 
-        };
+        }
 
         window.pidsPrevStop = function() { if (window.isTrackingPIDS && hasFirstFix && !window._useRemoteGps) return; let prevIdx = -1; for(let i = window.pidsCurrentIndex - 1; i >= 0; i--) { if (isPidsValid(window.stops[i])) { prevIdx = i; break; } } if (prevIdx !== -1) { window.pidsCurrentIndex = prevIdx; window.isNextStopMode = true; document.getElementById('status-text-pids').innerText = "下一站 | Next Stop"; window.updatePidsDisplay(); } }
 
