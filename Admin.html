@@ -28,7 +28,8 @@
     /* 車頭箭頭圖示 (會旋轉) */
     .fms-bus-arrow { width: 32px; height: 32px; background-repeat: no-repeat; background-position: center; border-radius: 50%; border: 2px solid white; box-shadow: 0 4px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; color: white; transition: transform 0.2s ease-out; }
     /* SVG 車頭箭頭，確保尖尖的朝向正確 */
-    .fms-bus-arrow-svg { width: 18px; height: 18px; fill: white; transform: rotate(180deg); }
+    /* SVG 車頭箭頭，移除 180 度翻轉，讓它完美朝向正確的方位 */
+    .fms-bus-arrow-svg { width: 18px; height: 18px; fill: white; }
 
     /* 車號與車速標籤 (不旋轉，保持易讀) */
     .fms-bus-label { background: rgba(0,0,0,0.8); color: white; padding: 4px 10px; border-radius: 12px; font-weight: bold; font-size: 13px; text-align: center; white-space:nowrap; margin-top: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); pointer-events: auto; cursor: pointer; }
