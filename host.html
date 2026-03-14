@@ -658,7 +658,10 @@
                 isPidsRunning: window.isTrackingPIDS,
                 timestamp: Date.now()
             });
-            window.reportFMS("系統狀態更新", true); // 同步觸發 FMS 強制上傳
+            
+            // ✨ 智慧判斷：如果導航有開就是行駛中，沒開就是待命
+            let currentStatus = (window.isTrackingPIDS || window.isTrackingVideo) ? "行駛中" : "待命";
+            window.reportFMS(`狀態切換：${currentStatus}`, true); // 同步觸發 FMS 強制上傳
         };
 
         // 📡 車隊管理系統 (FMS) 智慧回報引擎
