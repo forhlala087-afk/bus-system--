@@ -380,135 +380,132 @@
 
             // 📡 監聽本站所有車輛的 GPS 與即時動態 (企業級 FMS 渲染引擎)
             window._isAutoFollowing = false; // 智慧視角標記
-            window._fleetHistoryCache = {};  // ✨ 新增：用來記錄上一秒的狀態，判斷是否產生新日誌
+            window._fleetHistoryCache = {};  // 記錄上一秒的狀態
+            window._currentFleetData = {};   // 🌟 緩存最新車隊資料
 
-            onValue(ref(db, `stations/${sid}/fleet`), (snap) => {
-                if (snap.exists()) {
-                    const fleet = snap.val();
-                    let currentBounds = [];
-                    let liveTableHtml = ''; // ✨ 準備重繪左側清單
+            // 🌟 核心：把渲染邏輯抽出來，讓它可以被「定時」與「接收資料時」重複呼叫
+            function renderFleetDashboard() {
+                const fleet = window._currentFleetData;
+                if (!fleet || Object.keys(fleet).length === 0) return;
+
+                let currentBounds = [];
+                let liveTableHtml = ''; 
+                
+                for (let busId in fleet) {
+                    const data = fleet[busId];
+                    const lat = data.lat; const lon = data.lon;
+                    if (!lat || !lon) continue;
                     
-                    for (let busId in fleet) {
-                        const data = fleet[busId];
-                        const lat = data.lat; const lon = data.lon;
-                        if (!lat || !lon) continue;
-                        
-                        // 1. 數據解析
-                        const heading = data.heading || 0; 
-                        const speed = Math.round(data.speed || 0); 
-                        
-                        // 判斷車輛狀態 (超過 3 分鐘沒更新算斷線)
-                        const isOffline = (Date.now() - data.timestamp) > 180000;
-                        let statusColor = isOffline ? '#95a5a6' : (data.isTracking ? '#2ecc71' : '#f39c12');
-                        let statusText = isOffline ? '失去連線' : (data.isTracking ? '行駛中' : '未啟動導航');
+                    const heading = data.heading || 0; 
+                    const speed = Math.round(data.speed || 0); 
+                    
+                    // ✨ 智慧判定 (現在時間 - 資料時間 > 3分鐘即為斷線)
+                    const isOffline = (Date.now() - data.timestamp) > 120000;
+                    let statusColor = isOffline ? '#95a5a6' : (data.isTracking ? '#2ecc71' : '#f39c12');
+                    let statusText = isOffline ? '失去連線' : (data.isTracking ? '行駛中' : '未啟動導航');
 
-                        // 2. 超專業 FMS 車頭轉向 Icon
-                        const customIcon = L.divIcon({
-                            className: '', 
-                            iconSize: [100, 100], 
-                            iconAnchor: [50, 50], 
-                            html: `
-                                <div class="fms-bus-marker-container">
-                                    <div class="fms-bus-arrow" style="background-color:${statusColor}; transform: rotate(${heading}deg);">
-                                        <svg class="fms-bus-arrow-svg" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"></path></svg>
-                                    </div>
-                                    <div class="fms-bus-label">
-                                        🚌 ${busId}
-                                        <span class="fms-bus-speed">${isOffline ? '(斷線)' : speed + ' km/h'}</span>
-                                    </div>
+                    const customIcon = L.divIcon({
+                        className: '', 
+                        iconSize: [100, 100], 
+                        iconAnchor: [50, 50], 
+                        html: `
+                            <div class="fms-bus-marker-container">
+                                <div class="fms-bus-arrow" style="background-color:${statusColor}; transform: rotate(${heading}deg);">
+                                    <svg class="fms-bus-arrow-svg" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"></path></svg>
                                 </div>
-                            `
-                        });
-                        
-                        // 3. 泡泡彈窗資訊
-                        let popupHtml = `<div style="font-size:14px; line-height:1.6;">
-                                         <b style="font-size:17px; color:#333; margin-bottom:5px; display:block;">🚌 車號: ${busId}</b>
-                                         <div style="background:#eee; padding:5px 10px; border-radius:6px; margin-bottom:5px;">
-                                            <b>即時時速:</b> <b style="color:#e67e22; font-size:18px;">${isOffline ? '---' : speed}</b> km/h<br>
-                                            <b>車頭角度:</b> ${heading}°
-                                         </div>
-                                         <b>狀態:</b> <span style="color:${statusColor}; font-weight:bold;">${statusText}</span><br>
-                                         <b>路線:</b> ${data.routeName || '未載入'} (${data.direction === 'outbound' ? '去程' : '返程'})<br>
-                                         <b>動態:</b> <span style="color:#e74c3c; font-weight:bold;">${data.event || '待命'}</span><br>
-                                         <b>更新時間:</b> ${new Date(data.timestamp).toLocaleTimeString()}
-                                         </div>`;
+                                <div class="fms-bus-label" style="background:${isOffline ? 'rgba(100,100,100,0.8)' : 'rgba(0,0,0,0.8)'};">
+                                    🚌 ${busId}
+                                    <span class="fms-bus-speed">${isOffline ? '(斷線)' : speed + ' km/h'}</span>
+                                </div>
+                            </div>
+                        `
+                    });
+                    
+                    let popupHtml = `<div style="font-size:14px; line-height:1.6;">
+                                     <b style="font-size:17px; color:#333; margin-bottom:5px; display:block;">🚌 車號: ${busId}</b>
+                                     <div style="background:#eee; padding:5px 10px; border-radius:6px; margin-bottom:5px;">
+                                        <b>即時時速:</b> <b style="color:#e67e22; font-size:18px;">${isOffline ? '---' : speed}</b> km/h<br>
+                                        <b>車頭角度:</b> ${heading}°
+                                     </div>
+                                     <b>狀態:</b> <span style="color:${statusColor}; font-weight:bold;">${statusText}</span><br>
+                                     <b>路線:</b> ${data.routeName || '未載入'} (${data.direction === 'outbound' ? '去程' : '返程'})<br>
+                                     <b>動態:</b> <span style="color:#e74c3c; font-weight:bold;">${isOffline ? '已失去連線' : (data.event || '待命')}</span><br>
+                                     <b>更新時間:</b> ${new Date(data.timestamp).toLocaleTimeString()}
+                                     </div>`;
 
-                        // 4. 更新地圖圖層
-                        if (window.busMarkers[busId]) { 
-                            window.busMarkers[busId].setLatLng([lat, lon]); 
-                            window.busMarkers[busId].setIcon(customIcon);
+                    if (window.busMarkers[busId]) { 
+                        window.busMarkers[busId].setLatLng([lat, lon]); 
+                        window.busMarkers[busId].setIcon(customIcon);
+                        if (window.busMarkers[busId].isPopupOpen()) {
                             window.busMarkers[busId].getPopup().setContent(popupHtml); 
                         } else {
-                            window.busMarkers[busId] = L.marker([lat, lon], {icon: customIcon})
-                                .addTo(window.fmsMap)
-                                .bindPopup(popupHtml)
-                                .on('click', (e) => {
-                                    window.focusBus(busId); // 點擊地圖車輛也能鎖定
-                                });
+                            window.busMarkers[busId].bindPopup(popupHtml);
                         }
-                        currentBounds.push([lat, lon]);
+                    } else {
+                        window.busMarkers[busId] = L.marker([lat, lon], {icon: customIcon})
+                            .addTo(window.fmsMap)
+                            .bindPopup(popupHtml)
+                            .on('click', (e) => { window.focusBus(busId); });
+                    }
+                    currentBounds.push([lat, lon]);
 
-                        // ✨ 5. 構建左側「即時車隊總表」
-                        liveTableHtml += `
-                            <tr style="border-bottom: 1px solid #eee; cursor: pointer; transition: 0.2s;" onclick="focusBus('${busId}')" onmouseover="this.style.background='#e3f2fd'" onmouseout="this.style.background='transparent'">
-                                <td style="padding: 8px; font-weight:bold; color:#0984e3;">🚌 ${busId}</td>
-                                <td style="padding: 8px;"><span style="color:${statusColor};">●</span> ${isOffline ? '斷線' : speed + ' km/h'}</td>
-                                <td style="padding: 8px; color:${data.event && data.event.includes('🟢') ? '#27ae60' : '#333'}; font-weight:${data.event && data.event.includes('🟢') ? 'bold' : 'normal'};">${data.event || '待命'}</td>
-                                <td style="padding: 8px; color:#888;">${new Date(data.timestamp).toLocaleTimeString()}</td>
-                            </tr>
+                    liveTableHtml += `
+                        <tr style="border-bottom: 1px solid #eee; cursor: pointer; transition: 0.2s; background:${isOffline ? '#fdfdfd' : 'transparent'}; opacity:${isOffline ? '0.6' : '1'};" onclick="focusBus('${busId}')" onmouseover="this.style.background='#e3f2fd'" onmouseout="this.style.background='transparent'">
+                            <td style="padding: 8px; font-weight:bold; color:${isOffline ? '#999' : '#0984e3'};">🚌 ${busId}</td>
+                            <td style="padding: 8px;"><span style="color:${statusColor};">●</span> ${isOffline ? '斷線' : speed + ' km/h'}</td>
+                            <td style="padding: 8px; color:${!isOffline && data.event && data.event.includes('🟢') ? '#27ae60' : '#333'}; font-weight:${!isOffline && data.event && data.event.includes('🟢') ? 'bold' : 'normal'};">${isOffline ? '最後狀態: ' + (data.event||'待命') : (data.event || '待命')}</td>
+                            <td style="padding: 8px; color:#888;">${new Date(data.timestamp).toLocaleTimeString()}</td>
+                        </tr>
+                    `;
+
+                    // 處理右側歷史日誌
+                    let lastData = window._fleetHistoryCache[busId];
+                    if (!lastData || lastData.timestamp !== data.timestamp) {
+                        const logTable = document.getElementById('fleet-history-log');
+                        const tr = document.createElement('tr');
+                        tr.className = `log-row bus-log-${busId}`; 
+                        tr.style.borderBottom = "1px solid #eee";
+                        if (window._logFilterBusId && window._logFilterBusId !== busId) tr.style.display = 'none';
+                        
+                        let isEvent = data.event && (data.event.includes('🟢') || data.event.includes('▶️') || data.event.includes('狀態切換'));
+                        let eventStyle = isEvent ? "font-weight:bold; color:#27ae60;" : "color:#555;";
+
+                        tr.innerHTML = `
+                            <td style="padding: 6px; color:#666;">${new Date(data.timestamp).toLocaleTimeString()}</td>
+                            <td style="padding: 6px; font-weight:bold; color:#0984e3;">${busId}</td>
+                            <td style="padding: 6px; ${eventStyle}">${data.event || '行駛中'} <br><span style="font-size:11px; color:#aaa;">(${lat.toFixed(4)}, ${lon.toFixed(4)})</span></td>
+                            <td style="padding: 6px; color:${speed > 0 ? '#e67e22' : '#999'};">${speed} km/h</td>
                         `;
-
-                        // ✨ 6. 處理右側「滾動歷史日誌」
-                        let lastData = window._fleetHistoryCache[busId];
-                        // 只有當主機傳來「全新時間戳」的封包時，才寫入一筆新日誌
-                        if (!lastData || lastData.timestamp !== data.timestamp) {
-                            const logTable = document.getElementById('fleet-history-log');
-                            const tr = document.createElement('tr');
-                            
-                            // ✨ 新增：幫這行日誌貼上專屬車號的標籤 (例如 bus-log-9527)
-                            tr.className = `log-row bus-log-${busId}`; 
-                            tr.style.borderBottom = "1px solid #eee";
-                            
-                            // ✨ 新增：如果現在正在過濾某台車，且這筆紀錄不是他的，就先把它隱藏起來
-                            if (window._logFilterBusId && window._logFilterBusId !== busId) {
-                                tr.style.display = 'none';
-                            }
-                            
-                            // 如果是進站/出站等重要事件，給予特殊顏色凸顯
-                            let isEvent = data.event && (data.event.includes('🟢') || data.event.includes('▶️'));
-                            let eventStyle = isEvent ? "font-weight:bold; color:#27ae60;" : "color:#555;";
-
-                            tr.innerHTML = `
-                                <td style="padding: 6px; color:#666;">${new Date(data.timestamp).toLocaleTimeString()}</td>
-                                <td style="padding: 6px; font-weight:bold; color:#0984e3;">${busId}</td>
-                                <td style="padding: 6px; ${eventStyle}">${data.event || '行駛中'} <br><span style="font-size:11px; color:#aaa;">(${lat.toFixed(4)}, ${lon.toFixed(4)})</span></td>
-                                <td style="padding: 6px; color:${speed > 0 ? '#e67e22' : '#999'};">${speed} km/h</td>
-                            `;
-                            
-                            // 將新日誌插在最上方
-                            logTable.insertBefore(tr, logTable.firstChild);
-
-                            // 避免日誌無限增長吃光記憶體，最多保留最新的 200 筆
-                            if (logTable.children.length > 200) {
-                                logTable.removeChild(logTable.lastChild);
-                            }
-
-                            window._fleetHistoryCache[busId] = data; // 更新快取
-                        }
+                        logTable.insertBefore(tr, logTable.firstChild);
+                        if (logTable.children.length > 200) logTable.removeChild(logTable.lastChild);
+                        window._fleetHistoryCache[busId] = data;
                     }
-                    
-                    // 將組合好的車隊總表 HTML 放入左側
-                    document.getElementById('fleet-live-table').innerHTML = liveTableHtml || '<tr><td colspan="4" style="text-align:center; padding:10px; color:#999;">目前無車輛資料</td></tr>';
+                }
+                
+                document.getElementById('fleet-live-table').innerHTML = liveTableHtml || '<tr><td colspan="4" style="text-align:center; padding:10px; color:#999;">目前無車輛資料</td></tr>';
 
-                    // ✨ FMS 智慧視角跟隨引擎 ✨
-                    if (window._isAutoFollowing && window._followingBusId && window.busMarkers[window._followingBusId]) {
-                        window.fmsMap.panTo(window.busMarkers[window._followingBusId].getLatLng(), { animate: true, duration: 1 });
-                    } else if (!window._isAutoFollowing && currentBounds.length > 0) {
-                        if (!window._firstTimeBounds) {
-                             window.fmsMap.fitBounds(currentBounds, { padding: [50, 50], animate: true });
-                             window._firstTimeBounds = true; 
-                        }
+                if (window._isAutoFollowing && window._followingBusId && window.busMarkers[window._followingBusId]) {
+                    window.fmsMap.panTo(window.busMarkers[window._followingBusId].getLatLng(), { animate: true, duration: 1 });
+                } else if (!window._isAutoFollowing && currentBounds.length > 0) {
+                    if (!window._firstTimeBounds) {
+                         window.fmsMap.fitBounds(currentBounds, { padding: [50, 50], animate: true });
+                         window._firstTimeBounds = true; 
                     }
+                }
+            }
+
+            // 🌟 啟動背景巡邏狗：每 3 秒強制刷新畫面一次 (用來抓斷線)
+            if (!window._watchdogTimer) {
+                window._watchdogTimer = setInterval(() => {
+                    renderFleetDashboard();
+                }, 3000);
+            }
+
+            // 收到 Firebase 新資料時，更新快取，並立刻渲染
+            onValue(ref(db, `stations/${sid}/fleet`), (snap) => {
+                if (snap.exists()) {
+                    window._currentFleetData = snap.val();
+                    renderFleetDashboard();
                 }
             });
 
