@@ -1221,14 +1221,18 @@
                 const apiUrl = city === 'InterCity' ? `https://tdx.transportdata.tw/api/basic/v2/Bus/StopOfRoute/InterCity/${parentRoute}?%24format=JSON` : `https://tdx.transportdata.tw/api/basic/v2/Bus/StopOfRoute/City/${city}/${parentRoute}?%24format=JSON`;
                 const shapeUrl = city === 'InterCity' ? `https://tdx.transportdata.tw/api/basic/v2/Bus/Shape/InterCity/${parentRoute}?%24format=JSON` : `https://tdx.transportdata.tw/api/basic/v2/Bus/Shape/City/${city}/${parentRoute}?%24format=JSON`;
                 
-                // ✨ 雙管齊下：同時請求「站點」與「路線線型(Shape)」
-                const [response, shapeResponse] = await Promise.all([
+                // ✨ 三管齊下：同時請求「站點」、「路線線型(Shape)」與「S2S 站間旅行時間」
+                const s2sUrl = city === 'InterCity' ? `https://tdx.transportdata.tw/api/basic/v2/Bus/S2STravelTime/InterCity/${parentRoute}?%24format=JSON` : `https://tdx.transportdata.tw/api/basic/v2/Bus/S2STravelTime/City/${city}/${parentRoute}?%24format=JSON`;
+                
+                const [response, shapeResponse, s2sResponse] = await Promise.all([
                     fetch(apiUrl, { headers: { 'Authorization': `Bearer ${token}` } }),
-                    fetch(shapeUrl, { headers: { 'Authorization': `Bearer ${token}` } })
+                    fetch(shapeUrl, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(s2sUrl, { headers: { 'Authorization': `Bearer ${token}` } })
                 ]);
                 
                 const tdxData = await response.json();
                 const shapeData = shapeResponse.ok ? await shapeResponse.json() : [];
+                const s2sData = s2sResponse.ok ? await s2sResponse.json() : [];
                 
                 if (!tdxData || tdxData.length === 0) { alert(`找不到路線資料。\n請確認名稱是否完全吻合或選擇正確縣市。`); loadingOverlay.style.display = 'none'; return; }
                 
@@ -1247,12 +1251,31 @@
                         }
                     });
                 }
+
+                // ✨ 解析 TDX 的 S2S 站間時間資料 (新增的 ETA 歷史數據)
+                let s2sMapOut = {}; let s2sMapIn = {};
+                if (s2sData && s2sData.length > 0) {
+                    s2sData.forEach(routeObj => {
+                        let dirMap = (routeObj.Direction === 0 || routeObj.Direction === 2) ? s2sMapOut : s2sMapIn;
+                        if (routeObj.TravelTimes) {
+                            routeObj.TravelTimes.forEach(tt => {
+                                if (tt.FromStopName && tt.ToStopName) {
+                                    // 建立對照表：例如 "花蓮轉運站_花蓮電影城" = 120 秒
+                                    dirMap[tt.FromStopName.Zh_tw + "_" + tt.ToStopName.Zh_tw] = tt.RunTime;
+                                }
+                            });
+                        }
+                    });
+                }
                 
                 let targetData = tdxData.filter(routeObj => routeObj.SubRouteName && routeObj.SubRouteName.Zh_tw === rNameInput);
                 if (targetData.length === 0) targetData = tdxData;
 
                 let extractedRouteName = window.extractPidsRouteName(rNameInput);
-                let newProj = { outbound: { stops: [], routeName: extractedRouteName, destZH: "---", destEN: "---", stopCounter: 0 }, inbound: { stops: [], routeName: extractedRouteName, destZH: "---", destEN: "---", stopCounter: 0 } };
+                let newProj = { 
+                    outbound: { stops: [], routeName: extractedRouteName, destZH: "---", destEN: "---", stopCounter: 0, s2s: s2sMapOut }, 
+                    inbound: { stops: [], routeName: extractedRouteName, destZH: "---", destEN: "---", stopCounter: 0, s2s: s2sMapIn } 
+                };
                 let foundOut = false; let foundIn = false;
                 
                 targetData.forEach(routeObj => {
@@ -1314,10 +1337,11 @@
                 const serialize = (sArray) => sArray.map(s => ({ nameZH: s.nameZH, nameEN: s.nameEN, lat: s.lat, lon: s.lon, rad: s.rad, time: s.time, enabled: s.enabled, muted: s.muted, isCheckpoint: s.isCheckpoint, isWaypoint: s.isWaypoint, split: s.split || false, file: "", exitFile: "" }));
                 const newRouteData = { 
                     id: targetRouteId, name: projName, timestamp: new Date().toLocaleString(), isCircular: newProj.isCircular || false, 
-                    outbound: { ...window.projectData.outbound, stops: serialize(window.projectData.outbound.stops), shape: outShape }, 
-                    inbound: { ...window.projectData.inbound, stops: serialize(window.projectData.inbound.stops), shape: inShape } 
+                    outbound: { ...window.projectData.outbound, stops: serialize(window.projectData.outbound.stops), shape: outShape, s2s: s2sMapOut }, 
+                    inbound: { ...window.projectData.inbound, stops: serialize(window.projectData.inbound.stops), shape: inShape, s2s: s2sMapIn } 
                 };
                 window.projectData.outbound.shape = outShape; window.projectData.inbound.shape = inShape;
+                window.projectData.outbound.s2s = s2sMapOut; window.projectData.inbound.s2s = s2sMapIn;
                 routes.push(newRouteData); window.saveRoutesMetadata(routes); window.currentRouteId = targetRouteId; localStorage.setItem('gps_alarm_last_route_id', targetRouteId);
                 
                 window._requireStrictStartIdx = -1; window._hasPhysicallyEnteredReturnTrip = false;
@@ -1528,16 +1552,18 @@
                 id: targetRouteId, 
                 name: rn, 
                 timestamp: new Date().toLocaleString(), 
-                isCircular: window.projectData.isCircular || false, // 順便把循環線標記也存起來
+                isCircular: window.projectData.isCircular || false, 
                 outbound: { 
                     ...window.projectData.outbound, 
                     stops: serialize(window.projectData.outbound.stops),
-                    shape: window.projectData.outbound.shape || [] // 👈 就是這裡！把 shape 存起來
+                    shape: window.projectData.outbound.shape || [],
+                    s2s: window.projectData.outbound.s2s || {}
                 }, 
                 inbound: { 
                     ...window.projectData.inbound, 
                     stops: serialize(window.projectData.inbound.stops),
-                    shape: window.projectData.inbound.shape || []  // 👈 就是這裡！把 shape 存起來
+                    shape: window.projectData.inbound.shape || [],
+                    s2s: window.projectData.inbound.s2s || {}
                 } 
             };
             for (let i = 0; i < window.projectData.outbound.stops.length; i++) { let s = window.projectData.outbound.stops[i]; if (s.file) await saveVideoToDB(targetRouteId, 'outbound', i, s.file, 'enter'); if (s.exitFile) await saveVideoToDB(targetRouteId, 'outbound', i, s.exitFile, 'exit'); }
@@ -2411,68 +2437,98 @@
             if (!container) return;
             container.innerHTML = '';
             
-            // 1. 取得目前移動平均車速
-            let currentSpeed = window._currentSpeed ? (window._currentSpeed * 3.6) : 0;
-            window._hostSpeedHistory.push(currentSpeed);
-            if (window._hostSpeedHistory.length > 5) window._hostSpeedHistory.shift();
-            let avgSpeed = window._hostSpeedHistory.reduce((a, b) => a + b, 0) / window._hostSpeedHistory.length;
-            
             // 找出接下來的最多 6 個有效站點
             let futureStops = [];
             for (let i = window.pidsCurrentIndex; i < window.stops.length; i++) {
                 if (isPidsValid(window.stops[i])) {
-                    futureStops.push(window.stops[i]);
+                    futureStops.push({ stop: window.stops[i], index: i });
                     if (futureStops.length >= 6) break;
                 }
             }
 
-            // 取得目前的真實軌跡 (Shape) 來算距離
-            let shape = [];
-            if (window.currentDirection === 'outbound' && window.projectData.outbound && window.projectData.outbound.shape) shape = window.projectData.outbound.shape;
-            else if (window.currentDirection === 'inbound' && window.projectData.inbound && window.projectData.inbound.shape) shape = window.projectData.inbound.shape;
-
-            let accumulatedDist = 0;
-            let lastLat = window._lastValidLat || 0;
-            let lastLon = window._lastValidLon || 0;
-
-            futureStops.forEach((stop, index) => {
-                if (!stop.lat || !stop.lon) return;
-                
-                // 簡易距離累加 (從上一站加到這一站)
-                let segmentDist = getDist(lastLat, lastLon, parseFloat(stop.lat), parseFloat(stop.lon)) * 1.3; // 1.3 是道路曲折係數
-                accumulatedDist += segmentDist;
-                lastLat = parseFloat(stop.lat);
-                lastLon = parseFloat(stop.lon);
-
-                // ✨ 智慧車速鉗制演算法 (Speed Clamping) ✨
-                let effectiveSpeed = Math.max(avgSpeed, 15); // 保底 15km/h (防紅燈時間無限大)
-                
-                // 如果累積距離小於 2.5 公里 (代表即將進入平面市區)，最高預估車速不准超過 35km/h
-                if (accumulatedDist < 2500) {
-                    effectiveSpeed = Math.min(effectiveSpeed, 35);
+            let dirData = window.currentDirection === 'outbound' ? window.projectData.outbound : window.projectData.inbound;
+            let s2sMap = dirData.s2s || {}; 
+            
+            // ✨ 終極外掛修復：改用 window.routeName 判斷，確保 100% 觸發！
+            if (window.routeName && window.routeName.includes("301")) {
+                if (window.currentDirection === 'outbound') {
+                    s2sMap = { "花蓮轉運站_花蓮電影城": 150, "花蓮電影城_商校街": 45, "商校街_花蓮商校": 60, "花蓮商校_郵政總局": 105, "郵政總局_明義國小": 195, "明義國小_遠東百貨": 135, "遠東百貨_花蓮文創園區": 150, "花蓮文創園區_中華路": 150, "中華路_東大門夜市": 210, "東大門夜市_重慶市場(石藝大街)": 75, "重慶市場(石藝大街)_信義國小": 45, "信義國小_南濱公園": 120, "南濱公園_武聖宮(榮光社區)": 105, "武聖宮(榮光社區)_燕聲廣播": 90, "燕聲廣播_仁安社區": 60, "仁安社區_阿美麻糬": 45, "阿美麻糬_新天堂樂園": 75, "新天堂樂園_光華樂活創意園區": 75, "光華樂活創意園區_中華紙漿": 120, "中華紙漿_大學路口": 330, "大學路口_東華大學": 81, "東華大學_行政大樓": 78, "行政大樓_原住民學院": 96, "原住民學院_育成中心": 45, "育成中心_圖書館資訊大樓": 30};
                 } else {
-                    // 如果距離大於 2.5 公里 (代表可能在跑國道或快速道路)，最高可以採信到 80km/h
-                    effectiveSpeed = Math.min(effectiveSpeed, 80);
+                    s2sMap = { "圖書館資訊大樓_育成中心": 45, "育成中心_原住民學院": 45, "原住民學院_行政大樓": 60, "行政大樓_東華大學": 120, "東華大學_大學路口": 180, "大學路口_中華紙漿": 360, "中華紙漿_光華樂活創意園區": 105, "光華樂活創意園區_新天堂樂園": 75, "新天堂樂園_阿美麻糬": 60, "阿美麻糬_仁安社區": 60, "仁安社區_燕聲廣播": 105, "燕聲廣播_武聖宮(榮光社區)": 135, "武聖宮(榮光社區)_南濱公園": 120, "南濱公園_信義國小": 110, "信義國小_重慶市場(石藝大街)": 65, "重慶市場(石藝大街)_東大門夜市": 65, "東大門夜市_中華路": 150, "中華路_花蓮文創園區": 150, "花蓮文創園區_遠東百貨": 180, "遠東百貨_明義國小": 180, "明義國小_郵政總局": 150, "郵政總局_花蓮商校": 150, "花蓮商校_商校街": 90, "商校街_花蓮電影城": 90, "花蓮電影城_花蓮轉運站": 90 };
+                }
+            }
+            
+            let accumulatedSeconds = 0;
+            let busLat = window._lastValidLat || 0;
+            let busLon = window._lastValidLon || 0;
+
+            // 找前一站 (為了算「離站時的總距離」)
+            let prevStop = null;
+            for (let i = window.pidsCurrentIndex - 1; i >= 0; i--) {
+                if (isPidsValid(window.stops[i])) { prevStop = window.stops[i]; break; }
+            }
+
+            futureStops.forEach((item, k) => {
+                let currentTarget = item.stop;
+                if (!currentTarget.lat || !currentTarget.lon) return;
+                
+                let s2sTime = 120; // 如果 TDX 沒資料，防呆預設 2 分鐘
+                
+                if (k === 0) {
+                    // 🌟 你的神級公式：ETA = (目前距離 / 兩站總距離) * S2S時間
+                    let currentDist = getDist(busLat, busLon, parseFloat(currentTarget.lat), parseFloat(currentTarget.lon));
+                    let totalDist = currentDist; 
+                    
+                    let fromName = prevStop ? prevStop.nameZH : "";
+                    let toName = currentTarget.nameZH;
+                    if (fromName && s2sMap[fromName + "_" + toName]) {
+                        s2sTime = s2sMap[fromName + "_" + toName]; 
+                    }
+                    
+                    if (prevStop && prevStop.lat && prevStop.lon) {
+                        totalDist = getDist(parseFloat(prevStop.lat), parseFloat(prevStop.lon), parseFloat(currentTarget.lat), parseFloat(currentTarget.lon));
+                    }
+
+                    // 計算比例 (最高 1.0，防止公車繞遠路導致比例暴增)
+                    let ratio = totalDist > 0 ? (currentDist / totalDist) : 1.0;
+                    if (ratio > 1.0) ratio = 1.0;
+                    
+                    accumulatedSeconds += (s2sTime * ratio);
+
+                    // 極度靠近時強制歸零
+                    if (currentDist < 80) accumulatedSeconds = 0;
+                    
+                } else {
+                    // 🌟 第二站以後：直接累加 S2S 時間
+                    let prevTarget = futureStops[k-1].stop;
+                    let fromName = prevTarget.nameZH;
+                    let toName = currentTarget.nameZH;
+                    
+                    if (s2sMap[fromName + "_" + toName]) {
+                        accumulatedSeconds += s2sMap[fromName + "_" + toName];
+                    } else {
+                        // 如果這兩站 TDX 剛好沒資料，用直線距離預估一個時間 (防呆: 每公尺約需 0.15 秒)
+                        let d = getDist(parseFloat(prevTarget.lat), parseFloat(prevTarget.lon), parseFloat(currentTarget.lat), parseFloat(currentTarget.lon));
+                        accumulatedSeconds += (d * 0.15); 
+                    }
                 }
 
-                // 計算分鐘數
-                let timeSeconds = accumulatedDist / (effectiveSpeed * 1000 / 3600);
-                let timeMinutes = Math.ceil(timeSeconds / 60);
+                // 將秒數轉換為分鐘
+                let timeMinutes = Math.ceil(accumulatedSeconds / 60);
+                if (timeMinutes < 0) timeMinutes = 0;
 
                 let displayContent = `<div class="eta-cell-time">${timeMinutes}</div><div class="eta-cell-unit">分鐘</div>`;
                 let cellClass = "eta-cell";
 
-                // 第一站的特殊顯示邏輯
-                if (index === 0) {
-                    if (!window.isNextStopMode || accumulatedDist < 150) {
-                        displayContent = `<div class="eta-cell-time" style="font-size:5vh; padding: 20px 0;">即將抵達</div>`;
-                        cellClass = "eta-cell arriving";
-                    }
+                // 第一站的進站閃爍邏輯
+                if (k === 0 && (!window.isNextStopMode || accumulatedSeconds <= 40)) {
+                    displayContent = `<div class="eta-cell-time" style="font-size:5vh; padding: 20px 0;">即將抵達</div>`;
+                    cellClass = "eta-cell arriving";
                 }
 
                 container.innerHTML += `
                     <div class="${cellClass}">
-                        <div class="eta-cell-title">${stop.nameZH}</div>
+                        <div class="eta-cell-title">${currentTarget.nameZH}</div>
                         <div class="eta-cell-content">
                             ${displayContent}
                         </div>
