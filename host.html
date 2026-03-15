@@ -112,6 +112,14 @@
     #pids-overlay .stop-item-pids.past .dot-pids { opacity: 0.5; } #pids-overlay .stop-item-pids.past .stop-name-zh-pids { opacity: 0.5; } #pids-overlay .stop-item-pids.future .dot-pids { background-color: var(--future); box-shadow: 0 0 10px rgba(255,255,255,0.4); } #pids-overlay .stop-item-pids.future .stop-name-zh-pids { color: var(--future); font-size: 5.5vh; } #pids-overlay .stop-item-pids.future .stop-name-en-pids { color: var(--future); font-size: 2.8vh; }
     #pids-overlay .stop-item-pids.active { opacity: 1; } #pids-overlay .stop-item-pids.active .dot-pids { width: var(--dot-large); height: var(--dot-large); background-color: var(--highlight); box-shadow: 0 0 30px var(--highlight); border-width: 0; } #pids-overlay .stop-item-pids.active .stop-name-zh-pids { color: var(--highlight); font-size: 7vh; } #pids-overlay .stop-item-pids.active .stop-name-en-pids { color: var(--text-main); font-size: 3vh; }
     #pids-overlay .stop-item-pids.active.traveling .track-line-pids, #pids-overlay .stop-item-pids.active.arrived .track-line-pids { opacity: 1; background: repeating-linear-gradient(0deg, var(--highlight) 0px, var(--highlight) 20px, transparent 20px, transparent 40px); background-size: 100% 200%; } #pids-overlay .stop-item-pids.active.traveling .track-line-pids { animation: flowDownPids 1s linear infinite; } @keyframes flowDownPids { 0% { background-position: 0% 100%; } 100% { background-position: 0% 0%; } } #pids-overlay .stop-item-pids.active.traveling .dot-pids, #pids-overlay .stop-item-pids.active.arrived .dot-pids { animation: breathePids 2s infinite ease-in-out; } @keyframes breathePids { 0%, 100% { transform: scale(1); box-shadow: 0 0 30px var(--highlight); } 50% { transform: scale(1.1); box-shadow: 0 0 50px var(--highlight); } }
+  /* ✨ 新增：日式方塊 ETA 預估面板 CSS */
+    #pids-overlay .eta-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; background-color: #444; border: 6px solid #444; border-radius: 12px; width: 90%; height: 60vh; margin: 5vh auto; box-sizing: border-box; }
+    #pids-overlay .eta-cell { background-color: #111; display: flex; flex-direction: column; border-radius: 6px; overflow: hidden; box-shadow: inset 0 0 20px rgba(0,0,0,0.8); }
+    #pids-overlay .eta-cell-title { background-color: #2c3e50; color: #fff; font-size: 3.5vh; font-weight: bold; padding: 10px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; border-bottom: 2px solid #555; }
+    #pids-overlay .eta-cell-content { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+    #pids-overlay .eta-cell-time { color: #f1c40f; font-size: 8vh; font-weight: bold; text-shadow: 0 0 15px rgba(241,196,15,0.4); line-height: 1; }
+    #pids-overlay .eta-cell-unit { color: #aaa; font-size: 3vh; font-weight: bold; }
+    #pids-overlay .eta-cell.arriving .eta-cell-time { color: #e74c3c; font-size: 6vh; text-shadow: 0 0 15px rgba(231,76,60,0.5); animation: blink 1s infinite; }
     
     /* 🌟🌟🌟 新增：完美雙屏模式 CSS (參考可口可樂圖排版) 🌟🌟🌟 */
     #pids-overlay.split-mode .pids-header { width: 100%; box-sizing: border-box; }
@@ -353,7 +361,18 @@
 
     <div id="pids-overlay">
         <div class="pids-header" id="header-bar-pids"><div class="route-info-pids" id="route-name-pids">---</div><div class="status-title-pids" id="status-text-pids">下一站 | Next Stop</div><div class="destination-group-pids"><span class="arrow-icon-pids">➔</span><div class="dest-text-pids"><div class="dest-zh-pids" id="dest-zh-pids">---</div><div class="dest-en-pids" id="dest-en-pids">---</div></div></div></div>
-        <div class="viewport-pids" id="pidsClickZone"><div id="page-next-stop-pids" class="page-pids active"><div class="main-station" id="big-zh-pids">準備中</div><div class="sub-station" id="big-en-pids">Ready</div></div><div id="page-route-map-pids" class="page-pids"><div class="route-container-pids" id="route-list-container-pids"></div></div></div>
+        <div class="viewport-pids" id="pidsClickZone">
+            <div id="page-next-stop-pids" class="page-pids active">
+                <div class="main-station" id="big-zh-pids">準備中</div>
+                <div class="sub-station" id="big-en-pids">Ready</div>
+            </div>
+            <div id="page-route-map-pids" class="page-pids">
+                <div class="route-container-pids" id="route-list-container-pids"></div>
+            </div>
+            <div id="page-eta-grid-pids" class="page-pids">
+                <div class="eta-grid" id="eta-grid-container"></div>
+            </div>
+        </div>
         <div id="pids-switch-modal"><div class="switch-title-pids" id="pids-switch-title">去程已結束</div><div class="switch-desc-pids">將在 <span id="pids-switch-countdown" class="switch-countdown-text">5</span> 秒後自動切換至返程...</div><div style="display:flex; gap:10px; justify-content:center;"><button class="btn-switch-cancel" onclick="cancelDirectionSwitch()">取消</button><button class="btn-switch-confirm" onclick="confirmDirectionSwitch()">立即切換</button></div></div>
         <button class="btn-close-x" onclick="stopTracking()">✕</button>
         <div class="pids-manual-overlay" id="pids-manual-controls"><button class="pids-manual-btn" onclick="pidsPrevStop()">◀ 上一站</button><button class="pids-manual-btn" onclick="pidsNextAction()">▶ 下一站/抵達</button></div>
@@ -2384,9 +2403,88 @@
             }
         }
 
+       // ✨ 全域快取：記憶本機過去 5 次車速 (移動平均)
+        window._hostSpeedHistory = [];
+
+        function renderPidsEtaGrid() {
+            const container = document.getElementById('eta-grid-container');
+            if (!container) return;
+            container.innerHTML = '';
+            
+            // 1. 取得目前移動平均車速
+            let currentSpeed = window._currentSpeed ? (window._currentSpeed * 3.6) : 0;
+            window._hostSpeedHistory.push(currentSpeed);
+            if (window._hostSpeedHistory.length > 5) window._hostSpeedHistory.shift();
+            let avgSpeed = window._hostSpeedHistory.reduce((a, b) => a + b, 0) / window._hostSpeedHistory.length;
+            
+            // 找出接下來的最多 6 個有效站點
+            let futureStops = [];
+            for (let i = window.pidsCurrentIndex; i < window.stops.length; i++) {
+                if (isPidsValid(window.stops[i])) {
+                    futureStops.push(window.stops[i]);
+                    if (futureStops.length >= 6) break;
+                }
+            }
+
+            // 取得目前的真實軌跡 (Shape) 來算距離
+            let shape = [];
+            if (window.currentDirection === 'outbound' && window.projectData.outbound && window.projectData.outbound.shape) shape = window.projectData.outbound.shape;
+            else if (window.currentDirection === 'inbound' && window.projectData.inbound && window.projectData.inbound.shape) shape = window.projectData.inbound.shape;
+
+            let accumulatedDist = 0;
+            let lastLat = window._lastValidLat || 0;
+            let lastLon = window._lastValidLon || 0;
+
+            futureStops.forEach((stop, index) => {
+                if (!stop.lat || !stop.lon) return;
+                
+                // 簡易距離累加 (從上一站加到這一站)
+                let segmentDist = getDist(lastLat, lastLon, parseFloat(stop.lat), parseFloat(stop.lon)) * 1.3; // 1.3 是道路曲折係數
+                accumulatedDist += segmentDist;
+                lastLat = parseFloat(stop.lat);
+                lastLon = parseFloat(stop.lon);
+
+                // ✨ 智慧車速鉗制演算法 (Speed Clamping) ✨
+                let effectiveSpeed = Math.max(avgSpeed, 15); // 保底 15km/h (防紅燈時間無限大)
+                
+                // 如果累積距離小於 2.5 公里 (代表即將進入平面市區)，最高預估車速不准超過 35km/h
+                if (accumulatedDist < 2500) {
+                    effectiveSpeed = Math.min(effectiveSpeed, 35);
+                } else {
+                    // 如果距離大於 2.5 公里 (代表可能在跑國道或快速道路)，最高可以採信到 80km/h
+                    effectiveSpeed = Math.min(effectiveSpeed, 80);
+                }
+
+                // 計算分鐘數
+                let timeSeconds = accumulatedDist / (effectiveSpeed * 1000 / 3600);
+                let timeMinutes = Math.ceil(timeSeconds / 60);
+
+                let displayContent = `<div class="eta-cell-time">${timeMinutes}</div><div class="eta-cell-unit">分鐘</div>`;
+                let cellClass = "eta-cell";
+
+                // 第一站的特殊顯示邏輯
+                if (index === 0) {
+                    if (!window.isNextStopMode || accumulatedDist < 150) {
+                        displayContent = `<div class="eta-cell-time" style="font-size:5vh; padding: 20px 0;">即將抵達</div>`;
+                        cellClass = "eta-cell arriving";
+                    }
+                }
+
+                container.innerHTML += `
+                    <div class="${cellClass}">
+                        <div class="eta-cell-title">${stop.nameZH}</div>
+                        <div class="eta-cell-content">
+                            ${displayContent}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
         window.updatePidsDisplay = function() { 
             if(window.stops[window.pidsCurrentIndex]) { document.getElementById('big-zh-pids').innerText = window.stops[window.pidsCurrentIndex].nameZH; document.getElementById('big-en-pids').innerText = window.stops[window.pidsCurrentIndex].nameEN; } 
             renderPidsRouteMap(); 
+            renderPidsEtaGrid(); // ✨ 每次更新畫面時，連同第三頁一起更新
             if(window.pushStateToFirebase) window.pushStateToFirebase();
         }
 
@@ -2419,16 +2517,49 @@
 
         window.pidsPrevStop = function() { if (window.isTrackingPIDS && hasFirstFix && !window._useRemoteGps) return; let prevIdx = -1; for(let i = window.pidsCurrentIndex - 1; i >= 0; i--) { if (isPidsValid(window.stops[i])) { prevIdx = i; break; } } if (prevIdx !== -1) { window.pidsCurrentIndex = prevIdx; window.isNextStopMode = true; document.getElementById('status-text-pids').innerText = "下一站 | Next Stop"; window.updatePidsDisplay(); } }
 
+        window._pidsPageStage = 0; // 0: 站名, 1: 路線圖, 2: 預估時間 (ETA)
+
         function startPidsCycle() {
             if (pidsCycleInterval) clearInterval(pidsCycleInterval);
+            window._pidsPageStage = 0; // 啟動時先回到第一頁
+            
             pidsCycleInterval = setInterval(() => {
-                if(!window.isTrackingPIDS) return; pidsIsShowingMap = !pidsIsShowingMap;
-                const pageNext = document.getElementById('page-next-stop-pids'); const pageMap = document.getElementById('page-route-map-pids');
-                if(pageNext) { pageNext.classList.toggle('active', !pidsIsShowingMap); pageNext.style.opacity = pidsIsShowingMap ? '0' : '1'; pageNext.style.pointerEvents = pidsIsShowingMap ? 'none' : 'auto'; }
-                if(pageMap) { pageMap.classList.toggle('active', pidsIsShowingMap); pageMap.style.opacity = pidsIsShowingMap ? '1' : '0'; pageMap.style.pointerEvents = pidsIsShowingMap ? 'auto' : 'none'; }
-                const st = document.getElementById('status-text-pids'); if (st && window.isNextStopMode) st.innerText = pidsIsShowingMap ? "路線資訊 | Route Info" : "下一站 | Next Stop";
-            }, 5000);
+                if (!window.isTrackingPIDS) return; 
+                
+                // 讓頁面在 0, 1, 2 之間循環
+                window._pidsPageStage = (window._pidsPageStage + 1) % 3; 
+                
+                const pageNext = document.getElementById('page-next-stop-pids'); 
+                const pageMap = document.getElementById('page-route-map-pids');
+                const pageEta = document.getElementById('page-eta-grid-pids'); // ✨ 這是我們剛剛新增的第三頁
+                const st = document.getElementById('status-text-pids'); 
+
+                // 🌟 第一步：先隱藏所有頁面
+                if(pageNext) { pageNext.classList.remove('active'); pageNext.style.opacity = '0'; pageNext.style.pointerEvents = 'none'; }
+                if(pageMap) { pageMap.classList.remove('active'); pageMap.style.opacity = '0'; pageMap.style.pointerEvents = 'none'; }
+                if(pageEta) { pageEta.classList.remove('active'); pageEta.style.opacity = '0'; pageEta.style.pointerEvents = 'none'; }
+
+                // 🌟 第二步：根據目前的 Stage，把對應的那一頁叫出來，並改變上方標題
+                if (window._pidsPageStage === 0) {
+                    // 第 1 頁：大字站名
+                    if(pageNext) { pageNext.classList.add('active'); pageNext.style.opacity = '1'; pageNext.style.pointerEvents = 'auto'; }
+                    if(st) st.innerText = window.isNextStopMode ? "下一站 | Next Stop" : "即將抵達 | Arriving";
+                    
+                } else if (window._pidsPageStage === 1) {
+                    // 第 2 頁：藍色路線圓點圖
+                    if(pageMap) { pageMap.classList.add('active'); pageMap.style.opacity = '1'; pageMap.style.pointerEvents = 'auto'; }
+                    if(st) st.innerText = "路線資訊 | Route Info";
+                    
+                } else if (window._pidsPageStage === 2) {
+                    // 第 3 頁：日式方塊預估時間
+                    if(pageEta) { pageEta.classList.add('active'); pageEta.style.opacity = '1'; pageEta.style.pointerEvents = 'auto'; }
+                    if(st) st.innerText = "預估時間 | Estimated Time";
+                    // 切換到這頁的瞬間，強制重算一次最新的時間
+                    if(typeof renderPidsEtaGrid === 'function') renderPidsEtaGrid(); 
+                }
+            }, 5000); // 每 5 秒換一頁
         }
+        
         function stopPidsCycle() { clearInterval(pidsCycleInterval); pidsCycleInterval = null; }
     </script>
 </body>
