@@ -1198,12 +1198,36 @@
                 const token = await getValidToken();
                 if (!token) { loadingOverlay.style.display = 'none'; alert("❌ 授權失敗或連線逾時！"); return; }
                 
-                loadingText.innerText = `下載 ${rNameInput} 路線資料...`;
+                loadingText.innerText = `下載 ${rNameInput} 路線與線型資料...`;
                 const apiUrl = city === 'InterCity' ? `https://tdx.transportdata.tw/api/basic/v2/Bus/StopOfRoute/InterCity/${parentRoute}?%24format=JSON` : `https://tdx.transportdata.tw/api/basic/v2/Bus/StopOfRoute/City/${city}/${parentRoute}?%24format=JSON`;
+                const shapeUrl = city === 'InterCity' ? `https://tdx.transportdata.tw/api/basic/v2/Bus/Shape/InterCity/${parentRoute}?%24format=JSON` : `https://tdx.transportdata.tw/api/basic/v2/Bus/Shape/City/${city}/${parentRoute}?%24format=JSON`;
                 
-                const response = await fetch(apiUrl, { headers: { 'Authorization': `Bearer ${token}` } }); 
+                // ✨ 雙管齊下：同時請求「站點」與「路線線型(Shape)」
+                const [response, shapeResponse] = await Promise.all([
+                    fetch(apiUrl, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(shapeUrl, { headers: { 'Authorization': `Bearer ${token}` } })
+                ]);
+                
                 const tdxData = await response.json();
+                const shapeData = shapeResponse.ok ? await shapeResponse.json() : [];
+                
                 if (!tdxData || tdxData.length === 0) { alert(`找不到路線資料。\n請確認名稱是否完全吻合或選擇正確縣市。`); loadingOverlay.style.display = 'none'; return; }
+                
+                // ✨ 解析 TDX 線型格式
+                let outShape = []; let inShape = [];
+                if (shapeData && shapeData.length > 0) {
+                    shapeData.forEach(s => {
+                        if (s.Geometry && s.SubRouteName && s.SubRouteName.Zh_tw === rNameInput) {
+                            let coords = s.Geometry.match(/([0-9.]+\s+[0-9.]+)/g);
+                            if (coords) {
+                                let parsedCoords = coords.map(c => { let pts = c.split(' '); return [parseFloat(pts[1]), parseFloat(pts[0])]; });
+                                if (s.Direction === 0) outShape = parsedCoords;
+                                else if (s.Direction === 1) inShape = parsedCoords;
+                                else if (s.Direction === 2) outShape = parsedCoords; 
+                            }
+                        }
+                    });
+                }
                 
                 let targetData = tdxData.filter(routeObj => routeObj.SubRouteName && routeObj.SubRouteName.Zh_tw === rNameInput);
                 if (targetData.length === 0) targetData = tdxData;
@@ -1213,7 +1237,9 @@
                 let foundOut = false; let foundIn = false;
                 
                 targetData.forEach(routeObj => {
-                    const isOutbound = routeObj.Direction === 0; const dirKey = isOutbound ? 'outbound' : 'inbound';
+                    const isOutbound = (routeObj.Direction === 0 || routeObj.Direction === 2); 
+                    const dirKey = isOutbound ? 'outbound' : 'inbound';
+                    if (routeObj.Direction === 2) newProj.isCircular = true;
                     if (isOutbound && foundOut) return; if (!isOutbound && foundIn) return;
                     if (isOutbound) foundOut = true; if (!isOutbound) foundIn = true;
                     
@@ -1225,6 +1251,17 @@
                     if (c > 0) { newProj[dirKey].destZH = newProj[dirKey].stops[c - 1].nameZH; newProj[dirKey].destEN = newProj[dirKey].stops[c - 1].nameEN; }
                 });
                 
+                // ✨ 智慧循環線判定邏輯
+                if (foundOut && !foundIn) {
+                    if (newProj.outbound.stops.length > 1) {
+                        let firstStopName = newProj.outbound.stops[0].nameZH;
+                        for (let k = 1; k < newProj.outbound.stops.length; k++) {
+                            if (newProj.outbound.stops[k].nameZH === firstStopName) { newProj.isCircular = true; break; }
+                        }
+                    }
+                }
+                if (rNameInput.includes('循環')) newProj.isCircular = true;
+
                 const cpThreshold = parseFloat(document.getElementById('auto-cp-dist').value) || 300;
                 ['outbound', 'inbound'].forEach(dir => {
                     let dirStops = newProj[dir].stops; let lastValid = null;
@@ -1256,12 +1293,21 @@
                 if (existingIndex !== -1) routes.splice(existingIndex, 1);
                 
                 const serialize = (sArray) => sArray.map(s => ({ nameZH: s.nameZH, nameEN: s.nameEN, lat: s.lat, lon: s.lon, rad: s.rad, time: s.time, enabled: s.enabled, muted: s.muted, isCheckpoint: s.isCheckpoint, isWaypoint: s.isWaypoint, split: s.split || false, file: "", exitFile: "" }));
-                const newRouteData = { id: targetRouteId, name: projName, timestamp: new Date().toLocaleString(), outbound: { ...window.projectData.outbound, stops: serialize(window.projectData.outbound.stops) }, inbound: { ...window.projectData.inbound, stops: serialize(window.projectData.inbound.stops) } };
+                const newRouteData = { 
+                    id: targetRouteId, name: projName, timestamp: new Date().toLocaleString(), isCircular: newProj.isCircular || false, 
+                    outbound: { ...window.projectData.outbound, stops: serialize(window.projectData.outbound.stops), shape: outShape }, 
+                    inbound: { ...window.projectData.inbound, stops: serialize(window.projectData.inbound.stops), shape: inShape } 
+                };
+                window.projectData.outbound.shape = outShape; window.projectData.inbound.shape = inShape;
                 routes.push(newRouteData); window.saveRoutesMetadata(routes); window.currentRouteId = targetRouteId; localStorage.setItem('gps_alarm_last_route_id', targetRouteId);
                 
                 window._requireStrictStartIdx = -1; window._hasPhysicallyEnteredReturnTrip = false;
+
+                if (newProj.isCircular) { document.getElementById('chk-loop').checked = true; window.isLoopMode = true; localStorage.setItem('gps_alarm_loop_mode', true);
+                } else { document.getElementById('chk-loop').checked = false; window.isLoopMode = false; localStorage.setItem('gps_alarm_loop_mode', false); }
+
                 loadFromProject('outbound'); closeTdxModal(); 
-                alert(`✅ TDX 匯入成功！已自動建檔儲存。\n\n📂 專案: ${projName}\n🚌 路線: ${extractedRouteName}\n🔵 去程: ${window.projectData.outbound.stops.length} 站\n⚪ 返程: ${window.projectData.inbound.stops.length} 站`);
+                alert(`✅ TDX 匯入成功！已自動建檔儲存。\n\n📂 專案: ${projName}\n🚌 路線: ${extractedRouteName}\n🔵 去程: ${window.projectData.outbound.stops.length} 站\n⚪ 返程: ${window.projectData.inbound.stops.length} 站\n🔄 判定為循環線: ${newProj.isCircular ? '是 (已自動打勾)' : '否'}`);
             } catch (e) { alert("❌ API 請求失敗！"); } finally { loadingOverlay.style.display = 'none'; }
         };
 
@@ -1331,7 +1377,11 @@
         window.downloadConfigJson = function() {
             saveCurrentToProject();
             const serialize = (sArray) => sArray.map(s => ({ nameZH: document.getElementById(`namezh-${s.id}`) ? document.getElementById(`namezh-${s.id}`).value : s.nameZH, nameEN: document.getElementById(`nameen-${s.id}`) ? document.getElementById(`nameen-${s.id}`).value : s.nameEN, file: s.file ? s.file.name : "", exitFile: s.exitFile ? s.exitFile.name : "", lat: document.getElementById(`lat-${s.id}`) ? document.getElementById(`lat-${s.id}`).value : s.lat, lon: document.getElementById(`lon-${s.id}`) ? document.getElementById(`lon-${s.id}`).value : s.lon, rad: document.getElementById(`rad-${s.id}`) ? document.getElementById(`rad-${s.id}`).value : s.rad, time: document.getElementById(`time-${s.id}`) ? document.getElementById(`time-${s.id}`).value : s.time, muted: s.muted, enabled: s.enabled, isCheckpoint: s.isCheckpoint, isWaypoint: s.isWaypoint, split: s.split || false }));
-            const dataToExport = serialize(window.projectData[window.currentDirection].stops);
+            // ✨ 讓單獨下載 JSON 時也包含軌跡
+            const dataToExport = {
+                stops: serialize(window.projectData[window.currentDirection].stops),
+                shape: window.projectData[window.currentDirection].shape || []
+            };
             const blob = new Blob([JSON.stringify(dataToExport, null, 2)], {type: "application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = "config.json"; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
         }
 
@@ -1453,7 +1503,24 @@
             if(window.currentDirection === 'outbound') { window.routeName = window.projectData.outbound.routeName; window.destZH = window.projectData.outbound.destZH; window.destEN = window.projectData.outbound.destEN; } else { window.routeName = window.projectData.inbound.routeName; window.destZH = window.projectData.inbound.destZH; window.destEN = window.projectData.inbound.destEN; }
             updateTabLabels();
             const serialize = (sArray) => sArray.map(s => ({ nameZH: s.nameZH, nameEN: s.nameEN, lat: s.lat, lon: s.lon, rad: s.rad, time: s.time, enabled: s.enabled, muted: s.muted, isCheckpoint: s.isCheckpoint, isWaypoint: s.isWaypoint, split: s.split || false, file: s.file ? s.file.name : "", exitFile: s.exitFile ? s.exitFile.name : "" }));
-            const newRoute = { id: targetRouteId, name: rn, timestamp: new Date().toLocaleString(), outbound: { ...window.projectData.outbound, stops: serialize(window.projectData.outbound.stops) }, inbound: { ...window.projectData.inbound, stops: serialize(window.projectData.inbound.stops) } };
+            
+            // ✨ 關鍵修復：儲存專案時，必須把記憶體裡的 shape (路線真實軌跡) 一併打包進 json 裡！
+            const newRoute = { 
+                id: targetRouteId, 
+                name: rn, 
+                timestamp: new Date().toLocaleString(), 
+                isCircular: window.projectData.isCircular || false, // 順便把循環線標記也存起來
+                outbound: { 
+                    ...window.projectData.outbound, 
+                    stops: serialize(window.projectData.outbound.stops),
+                    shape: window.projectData.outbound.shape || [] // 👈 就是這裡！把 shape 存起來
+                }, 
+                inbound: { 
+                    ...window.projectData.inbound, 
+                    stops: serialize(window.projectData.inbound.stops),
+                    shape: window.projectData.inbound.shape || []  // 👈 就是這裡！把 shape 存起來
+                } 
+            };
             for (let i = 0; i < window.projectData.outbound.stops.length; i++) { let s = window.projectData.outbound.stops[i]; if (s.file) await saveVideoToDB(targetRouteId, 'outbound', i, s.file, 'enter'); if (s.exitFile) await saveVideoToDB(targetRouteId, 'outbound', i, s.exitFile, 'exit'); }
             for (let i = 0; i < window.projectData.inbound.stops.length; i++) { let s = window.projectData.inbound.stops[i]; if (s.file) await saveVideoToDB(targetRouteId, 'inbound', i, s.file, 'enter'); if (s.exitFile) await saveVideoToDB(targetRouteId, 'inbound', i, s.exitFile, 'exit'); }
             routes.push(newRoute); window.saveRoutesMetadata(routes); window.currentRouteId = targetRouteId; localStorage.setItem('gps_alarm_last_route_id', targetRouteId); document.getElementById('save-modal').style.display = 'none'; alert(`✅ 儲存成功！`);
