@@ -27,8 +27,6 @@
     
     /* 車頭箭頭圖示 (會旋轉) */
     .fms-bus-arrow { width: 32px; height: 32px; background-repeat: no-repeat; background-position: center; border-radius: 50%; border: 2px solid white; box-shadow: 0 4px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; color: white; transition: transform 0.2s ease-out; }
-    /* SVG 車頭箭頭，確保尖尖的朝向正確 */
-    /* SVG 車頭箭頭，移除 180 度翻轉，讓它完美朝向正確的方位 */
     .fms-bus-arrow-svg { width: 18px; height: 18px; fill: white; }
 
     /* 車號與車速標籤 (不旋轉，保持易讀) */
@@ -83,7 +81,7 @@
         
         <div class="card" style="border-top-color: #3498db; padding: 10px;">
             <h2 style="padding: 10px 10px 0 10px; border-bottom: none; margin-bottom: 5px;">🗺️ 站點車隊戰情室 (即時動態)</h2>
-            <p style="font-size: 13px; color: #666; margin: 0 0 10px 10px;">顯示本站營運中車輛。綠色=行駛中，橘色=待命，灰色=斷線。點擊標籤或下方列表可開啟智慧跟隨。</p>
+            <p style="font-size: 13px; color: #666; margin: 0 0 10px 10px;">顯示本站營運中車輛。綠色=行駛中，橘色=待命，灰色=斷線。點擊標籤或下方列表可開啟智慧跟隨與路線軌跡。</p>
             <div id="fms-map" style="width: 100%; height: 450px; border-radius: 8px; z-index: 1;"></div>
 
             <div style="margin-top: 20px; display: flex; gap: 15px; flex-wrap: wrap;">
@@ -108,9 +106,9 @@
 
                 <div style="flex: 1.5; min-width: 350px; background: #f8f9fa; border-radius: 8px; padding: 10px; border: 1px solid #ddd;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-    <h3 style="margin:0; font-size:16px; color:#2c3e50;">📜 <span id="log-title-text">全車隊動態日誌</span></h3>
-    <button id="btn-clear-filter" onclick="clearLogFilter()" style="display:none; background:#e74c3c; color:white; border:none; padding:4px 8px; border-radius:4px; font-size:12px; cursor:pointer; font-weight:bold;">✖ 顯示全車隊</button>
-</div>
+                        <h3 style="margin:0; font-size:16px; color:#2c3e50;">📜 <span id="log-title-text">全車隊動態日誌</span></h3>
+                        <button id="btn-clear-filter" onclick="clearLogFilter()" style="display:none; background:#e74c3c; color:white; border:none; padding:4px 8px; border-radius:4px; font-size:12px; cursor:pointer; font-weight:bold;">✖ 顯示全車隊</button>
+                    </div>
                     <div style="max-height: 250px; overflow-y: auto;">
                         <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
                             <thead>
@@ -122,7 +120,7 @@
                                 </tr>
                             </thead>
                             <tbody id="fleet-history-log">
-                                </tbody>
+                            </tbody>
                         </table>
                     </div>
                 </div>
@@ -131,7 +129,7 @@
 
         <div class="card" style="border-top-color: #0984e3;">
             <h2>🌐 1. 一鍵 TDX 智慧巡邏與更新</h2>
-            <p style="font-size: 14px; color: #666;">輸入 TDX 金鑰，系統將自動比對雲端現有路線，抓取 TDX 最新站點，並完美保留您的客製化影片設定！</p>
+            <p style="font-size: 14px; color: #666;">輸入 TDX 金鑰，系統將自動比對雲端現有路線，抓取 TDX 最新站點與軌跡線，並完美保留您的客製化設定！</p>
             <div style="display:flex; gap:10px; margin-bottom: 10px;">
                 <input type="text" id="tdx-id" class="input-field" placeholder="TDX Client ID" style="margin:0;">
                 <input type="password" id="tdx-secret" class="input-field" placeholder="TDX Client Secret" style="margin:0;">
@@ -141,8 +139,8 @@
         </div>
 
         <div class="card" style="border-top-color: #27ae60;">
-            <h2>📁 2. 手動上傳路線包 (首次建檔用)</h2>
-            <p style="font-size: 14px; color: #666;">如果您在主機端做好了全新的路線，請上傳由主機匯出的 <b>Backup.json</b>，上傳後本站所有公車將自動同步這些路線。</p>
+            <h2>📁 2. 手動上傳路線包 (包含軌跡檔)</h2>
+            <p style="font-size: 14px; color: #666;">如果您在主機端做好了全新的路線，請上傳由主機匯出的 <b>Backup.json</b>，上傳後戰情室即可繪製公車軌跡。</p>
             <input type="file" id="route-json-input" accept=".json" style="display:none" onchange="uploadRoutePackage(this)">
             <button class="btn" style="background:#27ae60;" onclick="document.getElementById('route-json-input').click()">📤 選擇 Backup.json 上傳</button>
             <p id="route-status" style="font-size:14px; font-weight:bold; color:#e67e22; margin-top:10px;">目前雲端狀態：尚未上傳</p>
@@ -200,6 +198,7 @@
             <input type="password" id="set-gh-token" class="input-field" placeholder="GitHub 金鑰 (ghp_...)">
             <button class="btn" style="background:#2980b9;" onclick="saveAudioConfig()">🚀 儲存並強制派發語音</button>
         </div>
+        
         <div class="card" style="border-top-color: #e84393;">
             <h2>🎬 6. 雲端輪播清單 (R2 網址串流)</h2>
             <p style="font-size: 14px; color: #666;">請在此貼上 Cloudflare R2 的影片直連網址（一行一個網址）。儲存後，全車隊的輪播影片會瞬間切換，主機無須下載任何檔案！</p>
@@ -340,8 +339,11 @@
             renderBusList(Object.keys(buses));
         });
 
+        // ✨ 監聽雲端路線，並暫存在 _cloudRoutes 供畫線引擎使用
         onValue(ref(db, `stations/${sid}/routes`), (snap) => {
             const routes = snap.val();
+            window._cloudRoutes = routes || []; 
+            
             const statusEl = document.getElementById('route-status');
             if(routes && routes.length > 0) {
                 statusEl.innerText = `✅ 雲端已備妥 ${routes.length} 條路線資料！`;
@@ -378,12 +380,12 @@
                 window.busMarkers = {};
             }
 
-            // 📡 監聽本站所有車輛的 GPS 與即時動態 (企業級 FMS 渲染引擎)
-            window._isAutoFollowing = false; // 智慧視角標記
-            window._fleetHistoryCache = {};  // 記錄上一秒的狀態
-            window._currentFleetData = {};   // 🌟 緩存最新車隊資料
+            // 📡 監聽本站所有車輛的 GPS 與即時動態
+            window._isAutoFollowing = false; 
+            window._fleetHistoryCache = {};  
+            window._currentFleetData = {};   
 
-            // 🌟 核心：把渲染邏輯抽出來，讓它可以被「定時」與「接收資料時」重複呼叫
+            // 🌟 核心渲染邏輯 (背景定時與資料更新時呼叫)
             function renderFleetDashboard() {
                 const fleet = window._currentFleetData;
                 if (!fleet || Object.keys(fleet).length === 0) return;
@@ -602,7 +604,6 @@
         for (let i = 0; i < cloudRoutes.length; i++) {
             let oldRoute = cloudRoutes[i];
             
-            // 嘗試解析出路線名稱跟城市 (假設在主機儲存時名稱為 "台北市 307路")
             let parts = oldRoute.name.split(' ');
             if (parts.length < 2) {
                 addTdxLog(`⏭️ 略過：[${oldRoute.name}] 名稱格式不符，請確保包含城市名與空格`);
@@ -635,7 +636,6 @@
                     continue;
                 }
 
-                // 過濾副線，找最符合的
                 let targetData = tdxData.filter(r => r.SubRouteName && r.SubRouteName.Zh_tw === routeName);
                 if (targetData.length === 0) targetData = tdxData;
 
@@ -659,11 +659,9 @@
                     });
                 });
 
-                // 🌟 執行智慧繼承 (把舊的影片與設定轉移到新抓下來的陣列上)
                 if (oldRoute.outbound && oldRoute.outbound.stops) inheritSettings(oldRoute.outbound.stops, newOutbound);
                 if (oldRoute.inbound && oldRoute.inbound.stops) inheritSettings(oldRoute.inbound.stops, newInbound);
 
-                // 正式更新這條路線的記憶體資料
                 oldRoute.outbound.stops = newOutbound;
                 oldRoute.outbound.stopCounter = newOutbound.length;
                 if(newOutbound.length > 0) { oldRoute.outbound.destZH = newOutbound[newOutbound.length-1].nameZH; oldRoute.outbound.destEN = newOutbound[newOutbound.length-1].nameEN; }
@@ -761,11 +759,8 @@
         showToast("✅ 語音包來源已更新，車機連線時將自動下載！");
     };
     
-    // 🚀 派發輪播清單
     window.savePlaylistConfig = async function() {
-        // 把文字框裡的內容按「換行」切開
         const lines = document.getElementById('set-playlist-urls').value.split('\n');
-        // 只保留 http 開頭的有效網址
         const urls = lines.map(l => l.trim()).filter(l => l.startsWith('http'));
         
         if (urls.length === 0) {
@@ -776,54 +771,112 @@
         showToast(`✅ 已派發 ${urls.length} 支輪播影片，車機將無縫串流播放！`);
     };
 
-  // ✨ 全域變數：記錄目前正在看哪台車的日誌
-    window._logFilterBusId = null;
+    // ✨ 繪製路線真實軌跡 (Shape) 究極防彈版
+    window.drawRouteShape = function(routeName, direction) {
+        console.log(`[畫線引擎] 收到請求 - 路線: ${routeName}, 方向: ${direction}`);
+        
+        if (window._routePolyline) {
+            window.fmsMap.removeLayer(window._routePolyline);
+            window._routePolyline = null;
+        }
+        
+        if (!window._cloudRoutes) {
+            console.log("[畫線引擎] ⚠️ 戰情室記憶體內沒有路線資料 (_cloudRoutes 為空)");
+            return;
+        }
 
-    // ✨ 點擊列表車輛：地圖鎖定視角 + 日誌專屬過濾
+        // ✨ 終極防呆 1：Firebase 有時候會回傳 Object，強制轉回 Array
+        let routesArray = Array.isArray(window._cloudRoutes) ? window._cloudRoutes : Object.values(window._cloudRoutes);
+        
+        // ✨ 終極防呆 2：極度寬鬆的路線名稱比對法
+        let targetRoute = routesArray.find(r => {
+            if (!r) return false;
+            let n1 = (r.outbound && r.outbound.routeName) ? r.outbound.routeName : "";
+            let n2 = (r.inbound && r.inbound.routeName) ? r.inbound.routeName : "";
+            let n3 = r.name || "";
+            return n1.includes(routeName) || n2.includes(routeName) || n3.includes(routeName) || (routeName && n1 && routeName.includes(n1));
+        });
+
+        if (targetRoute) {
+            console.log(`[畫線引擎] 成功比對到路線專案: ${targetRoute.name}`);
+            let shape = [];
+            
+            if (direction === 'outbound' && targetRoute.outbound && targetRoute.outbound.shape) {
+                shape = targetRoute.outbound.shape;
+            } else if (direction === 'inbound' && targetRoute.inbound && targetRoute.inbound.shape) {
+                shape = targetRoute.inbound.shape;
+            }
+
+            // ✨ 終極防呆 3：如果指定方向沒軌跡，但另一個方向有，就先借來用！
+            if ((!shape || shape.length === 0) && targetRoute.outbound && targetRoute.outbound.shape && targetRoute.outbound.shape.length > 0) {
+                console.log("[畫線引擎] ⚠️ 找不到該方向軌跡，借用去程軌跡！");
+                shape = targetRoute.outbound.shape;
+            } else if ((!shape || shape.length === 0) && targetRoute.inbound && targetRoute.inbound.shape && targetRoute.inbound.shape.length > 0) {
+                console.log("[畫線引擎] ⚠️ 找不到該方向軌跡，借用返程軌跡！");
+                shape = targetRoute.inbound.shape;
+            }
+
+            if (shape && shape.length > 0) {
+                console.log(`[畫線引擎] 準備繪製，座標點共 ${shape.length} 個！`);
+                let validShape = shape.filter(p => p && p.length === 2 && !isNaN(p[0]) && !isNaN(p[1]));
+                window._routePolyline = L.polyline(validShape, { color: '#0984e3', weight: 6, opacity: 0.6, lineCap: 'round', lineJoin: 'round' }).addTo(window.fmsMap);
+                try {
+                    window.fmsMap.fitBounds(window._routePolyline.getBounds(), { padding: [30, 30], animate: true });
+                } catch(e) { console.log("[畫線引擎] ⚠️ 縮放地圖失敗", e); }
+            } else {
+                console.log("[畫線引擎] ❌ 路線沒有 shape 資料！");
+                alert("⚠️ 無法畫線：雲端資料庫中的這條路線，沒有軌跡 (shape) 資料！請確認主機有重新儲存並上傳 Backup.json。");
+            }
+        } else {
+            console.log(`[畫線引擎] ❌ 找不到名為 [${routeName}] 的路線。`);
+        }
+    };
+
+    // ✨ 點擊列表車輛：地圖鎖定視角 + 日誌過濾 + 畫軌跡線
     window.focusBus = function(busId) {
         if (window.busMarkers && window.busMarkers[busId]) {
-            // 1. 讓地圖飛過去鎖定那台車
             window._isAutoFollowing = true; 
             window._followingBusId = busId; 
             window.fmsMap.panTo(window.busMarkers[busId].getLatLng(), { animate: true, duration: 1 });
             window.busMarkers[busId].openPopup();
             
-            // 2. 日誌過濾魔法開始！
             window._logFilterBusId = busId;
             
-            // 改標題名字，並顯示紅色的「顯示全車隊」按鈕
+            if (window._currentFleetData && window._currentFleetData[busId]) {
+                const bData = window._currentFleetData[busId];
+                window.drawRouteShape(bData.routeName, bData.direction);
+            }
+            
             document.getElementById('log-title-text').innerText = `🚌 ${busId} 專屬動態日誌`;
             document.getElementById('btn-clear-filter').style.display = 'block';
             
-            // 尋找所有的日誌，隱藏別台車的，只留下這台車的
             document.querySelectorAll('.log-row').forEach(row => {
-                if (row.classList.contains(`bus-log-${busId}`)) {
-                    row.style.display = ''; // 顯示
-                } else {
-                    row.style.display = 'none'; // 隱藏
-                }
+                if (row.classList.contains(`bus-log-${busId}`)) row.style.display = ''; 
+                else row.style.display = 'none';
             });
             
-            showToast(`👁️ 已鎖定視角與日誌至車輛 ${busId}`);
+            showToast(`👁️ 已鎖定視角：車輛 ${busId} (並繪製路線)`);
         }
     };
 
-    // ✨ 解除過濾，把隱藏的紀錄通通叫出來 (按紅色按鈕時觸發)
+    // ✨ 解除過濾，恢復全車隊視角
     window.clearLogFilter = function() {
         window._logFilterBusId = null;
         
-        // 標題改回來，隱藏紅色按鈕
+        if (window._routePolyline) {
+            window.fmsMap.removeLayer(window._routePolyline);
+            window._routePolyline = null;
+        }
+        
         document.getElementById('log-title-text').innerText = `全車隊動態日誌`;
         document.getElementById('btn-clear-filter').style.display = 'none';
         
-        // 把所有隱藏的紀錄全部解除隱藏
         document.querySelectorAll('.log-row').forEach(row => {
             row.style.display = '';
         });
         showToast(`📋 已切換回全車隊動態視角`);
     };
 
-    // 原本就在這裡的登出按鈕
     window.logout = function() { location.reload(); };  
 </script>
 </body>
