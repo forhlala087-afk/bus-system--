@@ -1084,7 +1084,16 @@
             if (count > 0) { renderAllStops(); alert(`✅ 已設 ${count} 個重啟點。`); } else { alert(`ℹ️ 無符合條件新站點。`); }
         };
 
-        function saveCurrentToProject() { window.projectData[window.currentDirection] = { stops: [...window.stops], routeName: window.routeName, destZH: window.destZH, destEN: window.destEN, stopCounter: window.stopCounter }; }
+        function saveCurrentToProject() { 
+            window.projectData[window.currentDirection] = { 
+                ...window.projectData[window.currentDirection], // 🌟 關鍵防護：保留原本的 s2s 與軌跡
+                stops: [...window.stops], 
+                routeName: window.routeName, 
+                destZH: window.destZH, 
+                destEN: window.destEN, 
+                stopCounter: window.stopCounter 
+            }; 
+        }
         function loadFromProject(dir) {
             window.currentDirection = dir; const data = window.projectData[dir];
             window.stops = data.stops || []; window.routeName = data.routeName || "---"; window.destZH = data.destZH || "---"; window.destEN = data.destEN || "---"; window.stopCounter = data.stopCounter || 0;
@@ -1207,151 +1216,174 @@
 
         window.executeTdxImport = async function() {
             try {
-                const city = document.getElementById('tdx-city').value; const rNameInput = document.getElementById('tdx-route-name').value.trim();
+                const city = document.getElementById('tdx-city').value; 
+                const rNameInput = document.getElementById('tdx-route-name').value.trim();
                 const parentRoute = document.getElementById('tdx-route-name').dataset.parentRoute || rNameInput;
 
                 if (!rNameInput) { alert("請填寫完整資訊！"); return; }
-                if (window.stops.length > 0 && !confirm("⚠️ 警告：這將會清空目前畫面上所有站點（去回程），確定繼續？")) return;
+                if (window.stops.length > 0 && !confirm("⚠️ 警告：這將會清空目前畫面上所有站點，確定繼續？")) return;
                 
                 loadingOverlay.style.display = 'flex'; loadingText.innerText = "請求 Token...";
                 const token = await getValidToken();
-                if (!token) { loadingOverlay.style.display = 'none'; alert("❌ 授權失敗或連線逾時！"); return; }
+                if (!token) { loadingOverlay.style.display = 'none'; alert("❌ 授權失敗！"); return; }
                 
-                loadingText.innerText = `下載 ${rNameInput} 路線與線型資料...`;
-                const apiUrl = city === 'InterCity' ? `https://tdx.transportdata.tw/api/basic/v2/Bus/StopOfRoute/InterCity/${parentRoute}?%24format=JSON` : `https://tdx.transportdata.tw/api/basic/v2/Bus/StopOfRoute/City/${city}/${parentRoute}?%24format=JSON`;
-                const shapeUrl = city === 'InterCity' ? `https://tdx.transportdata.tw/api/basic/v2/Bus/Shape/InterCity/${parentRoute}?%24format=JSON` : `https://tdx.transportdata.tw/api/basic/v2/Bus/Shape/City/${city}/${parentRoute}?%24format=JSON`;
+                const safeParentRoute = encodeURIComponent(parentRoute);
+                loadingText.innerText = `下載 ${rNameInput} 路線資料...`;
                 
-                // ✨ 三管齊下：同時請求「站點」、「路線線型(Shape)」與「S2S 站間旅行時間」
-                const s2sUrl = city === 'InterCity' ? `https://tdx.transportdata.tw/api/basic/v2/Bus/S2STravelTime/InterCity/${parentRoute}?%24format=JSON` : `https://tdx.transportdata.tw/api/basic/v2/Bus/S2STravelTime/City/${city}/${parentRoute}?%24format=JSON`;
+                const apiUrl = city === 'InterCity' ? `https://tdx.transportdata.tw/api/basic/v2/Bus/StopOfRoute/InterCity/${safeParentRoute}?%24format=JSON` : `https://tdx.transportdata.tw/api/basic/v2/Bus/StopOfRoute/City/${city}/${safeParentRoute}?%24format=JSON`;
+                const shapeUrl = city === 'InterCity' ? `https://tdx.transportdata.tw/api/basic/v2/Bus/Shape/InterCity/${safeParentRoute}?%24format=JSON` : `https://tdx.transportdata.tw/api/basic/v2/Bus/Shape/City/${city}/${safeParentRoute}?%24format=JSON`;
                 
-                const [response, shapeResponse, s2sResponse] = await Promise.all([
+                const [response, shapeResponse] = await Promise.all([
                     fetch(apiUrl, { headers: { 'Authorization': `Bearer ${token}` } }),
-                    fetch(shapeUrl, { headers: { 'Authorization': `Bearer ${token}` } }),
-                    fetch(s2sUrl, { headers: { 'Authorization': `Bearer ${token}` } })
+                    fetch(shapeUrl, { headers: { 'Authorization': `Bearer ${token}` } })
                 ]);
                 
-                const tdxData = await response.json();
+                const tdxData = response.ok ? await response.json() : null;
                 const shapeData = shapeResponse.ok ? await shapeResponse.json() : [];
-                const s2sData = s2sResponse.ok ? await s2sResponse.json() : [];
                 
-                if (!tdxData || tdxData.length === 0) { alert(`找不到路線資料。\n請確認名稱是否完全吻合或選擇正確縣市。`); loadingOverlay.style.display = 'none'; return; }
-                
-                // ✨ 解析 TDX 線型格式
-                let outShape = []; let inShape = [];
-                if (shapeData && shapeData.length > 0) {
-                    shapeData.forEach(s => {
-                        if (s.Geometry && s.SubRouteName && s.SubRouteName.Zh_tw === rNameInput) {
-                            let coords = s.Geometry.match(/([0-9.]+\s+[0-9.]+)/g);
-                            if (coords) {
-                                let parsedCoords = coords.map(c => { let pts = c.split(' '); return [parseFloat(pts[1]), parseFloat(pts[0])]; });
-                                if (s.Direction === 0) outShape = parsedCoords;
-                                else if (s.Direction === 1) inShape = parsedCoords;
-                                else if (s.Direction === 2) outShape = parsedCoords; 
-                            }
-                        }
-                    });
+                if (!Array.isArray(tdxData) || tdxData.length === 0) { 
+                    alert(`❌ 找不到路線資料。`); loadingOverlay.style.display = 'none'; return; 
                 }
 
-                // ✨ 解析 TDX 的 S2S 站間時間資料 (新增的 ETA 歷史數據)
-                let s2sMapOut = {}; let s2sMapIn = {};
-                if (s2sData && s2sData.length > 0) {
-                    s2sData.forEach(routeObj => {
-                        let dirMap = (routeObj.Direction === 0 || routeObj.Direction === 2) ? s2sMapOut : s2sMapIn;
-                        if (routeObj.TravelTimes) {
-                            routeObj.TravelTimes.forEach(tt => {
-                                if (tt.FromStopName && tt.ToStopName) {
-                                    // 建立對照表：例如 "花蓮轉運站_花蓮電影城" = 120 秒
-                                    dirMap[tt.FromStopName.Zh_tw + "_" + tt.ToStopName.Zh_tw] = tt.RunTime;
+                let routeIdStr = tdxData[0].RouteID || "";
+                if (Array.isArray(shapeData) && shapeData.length > 0) routeIdStr = shapeData[0].RouteID || routeIdStr;
+
+                loadingText.innerText = `下載 S2S 歷史數據...`;
+                const s2sUrl = city === 'InterCity' ? 
+                    `https://tdx.transportdata.tw/api/basic/v2/Bus/S2STravelTime/InterCity/${routeIdStr}?%24top=5000&%24format=JSON` : 
+                    `https://tdx.transportdata.tw/api/basic/v2/Bus/S2STravelTime/City/${city}/${routeIdStr}?%24top=5000&%24format=JSON`;
+                const s2sResponse = await fetch(s2sUrl, { headers: { 'Authorization': `Bearer ${token}` } });
+                const s2sData = s2sResponse.ok ? await s2sResponse.json() : [];
+
+                // 🌟 1. 先把站牌名單建立起來，當作後續的「篩子」
+                let targetData = tdxData.filter(r => r.SubRouteName && r.SubRouteName.Zh_tw === rNameInput);
+                if (targetData.length === 0) targetData = tdxData;
+
+                let extractedRouteName = window.extractPidsRouteName(rNameInput);
+                let newProj = { 
+                    outbound: { stops: [], routeName: extractedRouteName, destZH: "---", destEN: "---", stopCounter: 0, s2s: {}, shape: [] }, 
+                    inbound: { stops: [], routeName: extractedRouteName, destZH: "---", destEN: "---", stopCounter: 0, s2s: {}, shape: [] } 
+                };
+
+                targetData.forEach(routeObj => {
+                    const dk = (routeObj.Direction === 0 || routeObj.Direction === 2) ? 'outbound' : 'inbound';
+                    if (routeObj.Direction === 2) newProj.isCircular = true;
+                    if (newProj[dk].stops.length > 0) return;
+                    routeObj.Stops.forEach((st, idx) => {
+                        newProj[dk].stops.push(makeStop(idx+1, st.StopName.Zh_tw, st.StopName.En || "", st.StopPosition.PositionLat.toString(), st.StopPosition.PositionLon.toString()));
+                    });
+                    newProj[dk].stopCounter = routeObj.Stops.length;
+                    if (newProj[dk].stopCounter > 0) { 
+                        newProj[dk].destZH = newProj[dk].stops[newProj[dk].stopCounter-1].nameZH;
+                        newProj[dk].destEN = newProj[dk].stops[newProj[dk].stopCounter-1].nameEN;
+                    }
+                });
+
+                // 抽出純中文站名陣列，作為比對的篩子
+                let outStopNames = newProj.outbound.stops.map(s => s.nameZH);
+                let inStopNames = newProj.inbound.stops.map(s => s.nameZH);
+
+                let safeHasSegment = (arr, f, t) => {
+                    let idxF = arr.indexOf(f);
+                    if (idxF === -1) return false;
+                    let idxT = arr.indexOf(t, idxF); 
+                    return idxT > idxF;
+                };
+
+                let stopIdToName = {};
+                tdxData.forEach(routeObj => {
+                    if (routeObj.Stops) {
+                        routeObj.Stops.forEach(st => {
+                            let name = st.StopName.Zh_tw;
+                            if (st.StopID) stopIdToName[st.StopID] = name;
+                            if (st.StopUID) stopIdToName[st.StopUID] = name;
+                            if (st.StationID) stopIdToName[st.StationID] = name;
+                            let digits = st.StopUID ? st.StopUID.replace(/\D/g, "") : "";
+                            if (digits) stopIdToName[digits] = name;
+                        });
+                    }
+                });
+
+                // 🌟 只收集數據，不分小時
+                let allOutData = {}; 
+                let allInData = {};
+                let debugOutCount = 0;
+                let debugInCount = 0;
+
+                if (Array.isArray(s2sData)) {
+                    s2sData.forEach(routeDirObj => {
+                        if (routeDirObj.TravelTimes) {
+                            routeDirObj.TravelTimes.forEach(hourGroup => {
+                                let segments = hourGroup.S2STimes || hourGroup.TravelTimes;
+                                if (segments && Array.isArray(segments)) {
+                                    segments.forEach(tt => {
+                                        let fId = tt.FromStopID || tt.FromStopUID || "";
+                                        let tId = tt.ToStopID || tt.ToStopUID || "";
+                                        let fromName = stopIdToName[fId] || (tt.FromStopName && tt.FromStopName.Zh_tw);
+                                        let toName = stopIdToName[tId] || (tt.ToStopName && tt.ToStopName.Zh_tw);
+                                        
+                                        if (fromName && toName && tt.RunTime > 0) {
+                                            let key = fromName + "_" + toName;
+                                            let rt = Math.round(tt.RunTime);
+                                            
+                                            // 丟給篩子判定，它屬於去程還是返程？
+                                            let isOutSeg = safeHasSegment(outStopNames, fromName, toName);
+                                            let isInSeg = safeHasSegment(inStopNames, fromName, toName);
+
+                                            if (isOutSeg) {
+                                                if (!allOutData[key]) allOutData[key] = [];
+                                                allOutData[key].push(rt);
+                                                debugOutCount++;
+                                            }
+                                            if (isInSeg) {
+                                                if (!allInData[key]) allInData[key] = [];
+                                                allInData[key].push(rt);
+                                                debugInCount++;
+                                            }
+                                        }
+                                    });
                                 }
                             });
                         }
                     });
                 }
-                
-                let targetData = tdxData.filter(routeObj => routeObj.SubRouteName && routeObj.SubRouteName.Zh_tw === rNameInput);
-                if (targetData.length === 0) targetData = tdxData;
 
-                let extractedRouteName = window.extractPidsRouteName(rNameInput);
-                let newProj = { 
-                    outbound: { stops: [], routeName: extractedRouteName, destZH: "---", destEN: "---", stopCounter: 0, s2s: s2sMapOut }, 
-                    inbound: { stops: [], routeName: extractedRouteName, destZH: "---", destEN: "---", stopCounter: 0, s2s: s2sMapIn } 
-                };
-                let foundOut = false; let foundIn = false;
+                // 🌟 把龐大的數據壓縮成單純的「扁平平均值」
+                let s2sMapOut = {};
+                let s2sMapIn = {};
+                for (let key in allOutData) { s2sMapOut[key] = Math.round(allOutData[key].reduce((a,b)=>a+b, 0) / allOutData[key].length); }
+                for (let key in allInData) { s2sMapIn[key] = Math.round(allInData[key].reduce((a,b)=>a+b, 0) / allInData[key].length); }
                 
-                targetData.forEach(routeObj => {
-                    const isOutbound = (routeObj.Direction === 0 || routeObj.Direction === 2); 
-                    const dirKey = isOutbound ? 'outbound' : 'inbound';
-                    if (routeObj.Direction === 2) newProj.isCircular = true;
-                    if (isOutbound && foundOut) return; if (!isOutbound && foundIn) return;
-                    if (isOutbound) foundOut = true; if (!isOutbound) foundIn = true;
-                    
-                    let c = 0; routeObj.Stops.forEach(st => { 
-                        c++; 
-                        newProj[dirKey].stops.push(makeStop(c, st.StopName.Zh_tw||"", st.StopName.En||"", st.StopPosition.PositionLat.toString(), st.StopPosition.PositionLon.toString())); 
+                newProj.outbound.s2s = s2sMapOut;
+                newProj.inbound.s2s = s2sMapIn;
+
+                // --- 軌跡渲染邏輯 ---
+                let outShape = []; let inShape = [];
+                if (Array.isArray(shapeData)) {
+                    shapeData.forEach(s => {
+                        if (s.Geometry && s.SubRouteName && s.SubRouteName.Zh_tw === rNameInput) {
+                            let coords = s.Geometry.match(/([0-9.]+\s+[0-9.]+)/g);
+                            if (coords) {
+                                let pts = coords.map(c => { let p = c.split(' '); return [parseFloat(p[1]), parseFloat(p[0])]; });
+                                if (s.Direction === 0) outShape = pts; else if (s.Direction === 1) inShape = pts; else if (s.Direction === 2) outShape = pts;
+                            }
+                        }
                     });
-                    newProj[dirKey].stopCounter = c;
-                    if (c > 0) { newProj[dirKey].destZH = newProj[dirKey].stops[c - 1].nameZH; newProj[dirKey].destEN = newProj[dirKey].stops[c - 1].nameEN; }
-                });
-                
-                // ✨ 智慧循環線判定邏輯
-                if (foundOut && !foundIn) {
-                    if (newProj.outbound.stops.length > 1) {
-                        let firstStopName = newProj.outbound.stops[0].nameZH;
-                        for (let k = 1; k < newProj.outbound.stops.length; k++) {
-                            if (newProj.outbound.stops[k].nameZH === firstStopName) { newProj.isCircular = true; break; }
-                        }
-                    }
                 }
-                if (rNameInput.includes('循環')) newProj.isCircular = true;
-
-                const cpThreshold = parseFloat(document.getElementById('auto-cp-dist').value) || 300;
-                ['outbound', 'inbound'].forEach(dir => {
-                    let dirStops = newProj[dir].stops; let lastValid = null;
-                    for (let i = 0; i < dirStops.length; i++) {
-                        dirStops[i].mergedSkipped = false;
-                        if (lastValid && dirStops[i].nameZH === lastValid.nameZH) {
-                            let d = getDist(parseFloat(lastValid.lat), parseFloat(lastValid.lon), parseFloat(dirStops[i].lat), parseFloat(dirStops[i].lon));
-                            if (d < 30 && !dirStops[i].nameZH.includes('指南實小')) { dirStops[i].mergedSkipped = true; continue; }
-                        }
-                        lastValid = dirStops[i];
-                    }
-                    for (let i = 0; i < dirStops.length; i++) {
-                        let s = dirStops[i]; if (s.mergedSkipped) continue;
-                        let isolated = true;
-                        for (let j = 0; j < dirStops.length; j++) {
-                            if (i === j) continue;
-                            let o = dirStops[j]; if (o.mergedSkipped) continue;
-                            if (getDist(parseFloat(s.lat), parseFloat(s.lon), parseFloat(o.lat), parseFloat(o.lon)) <= cpThreshold) { isolated = false; break; }
-                        }
-                        if (isolated) s.isCheckpoint = true;
-                    }
-                });
+                newProj.outbound.shape = outShape;
+                newProj.inbound.shape = inShape;
 
                 window.projectData = newProj;
-                let projName = `${cityMap[city] || city} ${rNameInput}`;
                 let routes = window.getSavedRoutes();
+                let projName = `${cityMap[city] || city} ${rNameInput}`;
                 const existingIndex = routes.findIndex(r => r.name === projName);
-                let targetRouteId = existingIndex !== -1 ? routes[existingIndex].id : Date.now().toString();
                 if (existingIndex !== -1) routes.splice(existingIndex, 1);
+                routes.push({ id: Date.now().toString(), name: projName, timestamp: new Date().toLocaleString(), outbound: newProj.outbound, inbound: newProj.inbound, isCircular: newProj.isCircular });
+                window.saveRoutesMetadata(routes);
                 
-                const serialize = (sArray) => sArray.map(s => ({ nameZH: s.nameZH, nameEN: s.nameEN, lat: s.lat, lon: s.lon, rad: s.rad, time: s.time, enabled: s.enabled, muted: s.muted, isCheckpoint: s.isCheckpoint, isWaypoint: s.isWaypoint, split: s.split || false, file: "", exitFile: "" }));
-                const newRouteData = { 
-                    id: targetRouteId, name: projName, timestamp: new Date().toLocaleString(), isCircular: newProj.isCircular || false, 
-                    outbound: { ...window.projectData.outbound, stops: serialize(window.projectData.outbound.stops), shape: outShape, s2s: s2sMapOut }, 
-                    inbound: { ...window.projectData.inbound, stops: serialize(window.projectData.inbound.stops), shape: inShape, s2s: s2sMapIn } 
-                };
-                window.projectData.outbound.shape = outShape; window.projectData.inbound.shape = inShape;
-                window.projectData.outbound.s2s = s2sMapOut; window.projectData.inbound.s2s = s2sMapIn;
-                routes.push(newRouteData); window.saveRoutesMetadata(routes); window.currentRouteId = targetRouteId; localStorage.setItem('gps_alarm_last_route_id', targetRouteId);
-                
-                window._requireStrictStartIdx = -1; window._hasPhysicallyEnteredReturnTrip = false;
-
-                if (newProj.isCircular) { document.getElementById('chk-loop').checked = true; window.isLoopMode = true; localStorage.setItem('gps_alarm_loop_mode', true);
-                } else { document.getElementById('chk-loop').checked = false; window.isLoopMode = false; localStorage.setItem('gps_alarm_loop_mode', false); }
-
-                loadFromProject('outbound'); closeTdxModal(); 
-                alert(`✅ TDX 匯入成功！已自動建檔儲存。\n\n📂 專案: ${projName}\n🚌 路線: ${extractedRouteName}\n🔵 去程: ${window.projectData.outbound.stops.length} 站\n⚪ 返程: ${window.projectData.inbound.stops.length} 站\n🔄 判定為循環線: ${newProj.isCircular ? '是 (已自動打勾)' : '否'}`);
-            } catch (e) { alert("❌ API 請求失敗！"); } finally { loadingOverlay.style.display = 'none'; }
+                loadFromProject('outbound'); closeTdxModal();
+                alert(`✅ 匯入完成！\n\n📊 [智慧分類帽報告]\n去程抽屜收集了: ${debugOutCount} 筆\n返程抽屜收集了: ${debugInCount} 筆\n(已自動壓縮為全天平均值，減輕檔案負擔)`);
+            } catch (e) { alert("❌ 錯誤: " + e.message); } finally { loadingOverlay.style.display = 'none'; }
         };
 
         const DB_NAME = "GPS_Alarm_V32"; const DB_VERSION = 1; const STORE_NAME = "route_videos";
@@ -2437,7 +2469,6 @@
             if (!container) return;
             container.innerHTML = '';
             
-            // 找出接下來的最多 6 個有效站點
             let futureStops = [];
             for (let i = window.pidsCurrentIndex; i < window.stops.length; i++) {
                 if (isPidsValid(window.stops[i])) {
@@ -2446,82 +2477,114 @@
                 }
             }
 
-            let dirData = window.currentDirection === 'outbound' ? window.projectData.outbound : window.projectData.inbound;
-            let s2sMap = dirData.s2s || {}; 
-            
-            // ✨ 終極外掛修復：改用 window.routeName 判斷，確保 100% 觸發！
-            if (window.routeName && window.routeName.includes("301")) {
-                if (window.currentDirection === 'outbound') {
-                    s2sMap = { "花蓮轉運站_花蓮電影城": 150, "花蓮電影城_商校街": 45, "商校街_花蓮商校": 60, "花蓮商校_郵政總局": 105, "郵政總局_明義國小": 195, "明義國小_遠東百貨": 135, "遠東百貨_花蓮文創園區": 150, "花蓮文創園區_中華路": 150, "中華路_東大門夜市": 210, "東大門夜市_重慶市場(石藝大街)": 75, "重慶市場(石藝大街)_信義國小": 45, "信義國小_南濱公園": 120, "南濱公園_武聖宮(榮光社區)": 105, "武聖宮(榮光社區)_燕聲廣播": 90, "燕聲廣播_仁安社區": 60, "仁安社區_阿美麻糬": 45, "阿美麻糬_新天堂樂園": 75, "新天堂樂園_光華樂活創意園區": 75, "光華樂活創意園區_中華紙漿": 120, "中華紙漿_大學路口": 330, "大學路口_東華大學": 81, "東華大學_行政大樓": 78, "行政大樓_原住民學院": 96, "原住民學院_育成中心": 45, "育成中心_圖書館資訊大樓": 30};
-                } else {
-                    s2sMap = { "圖書館資訊大樓_育成中心": 45, "育成中心_原住民學院": 45, "原住民學院_行政大樓": 60, "行政大樓_東華大學": 120, "東華大學_大學路口": 180, "大學路口_中華紙漿": 360, "中華紙漿_光華樂活創意園區": 105, "光華樂活創意園區_新天堂樂園": 75, "新天堂樂園_阿美麻糬": 60, "阿美麻糬_仁安社區": 60, "仁安社區_燕聲廣播": 105, "燕聲廣播_武聖宮(榮光社區)": 135, "武聖宮(榮光社區)_南濱公園": 120, "南濱公園_信義國小": 110, "信義國小_重慶市場(石藝大街)": 65, "重慶市場(石藝大街)_東大門夜市": 65, "東大門夜市_中華路": 150, "中華路_花蓮文創園區": 150, "花蓮文創園區_遠東百貨": 180, "遠東百貨_明義國小": 180, "明義國小_郵政總局": 150, "郵政總局_花蓮商校": 150, "花蓮商校_商校街": 90, "商校街_花蓮電影城": 90, "花蓮電影城_花蓮轉運站": 90 };
-                }
-            }
-            
+            // 🌟 拿出被保護好的兩個抽屜
+            let outS2S = window.projectData.outbound.s2s || {};
+            let inS2S = window.projectData.inbound.s2s || {};
+
             let accumulatedSeconds = 0;
             let busLat = window._lastValidLat || 0;
             let busLon = window._lastValidLon || 0;
 
-            // 找前一站 (為了算「離站時的總距離」)
             let prevStop = null;
             for (let i = window.pidsCurrentIndex - 1; i >= 0; i--) {
                 if (isPidsValid(window.stops[i])) { prevStop = window.stops[i]; break; }
             }
 
+            // 🌟 雙抽屜通吃 + 模糊去括號查表法
+            const getS2STime = (nameA, nameB) => {
+                if (!nameA || !nameB) return null;
+                let cleanA = nameA.replace(/\(.*\)|（.*）|\s/g, '');
+                let cleanB = nameB.replace(/\(.*\)|（.*）|\s/g, '');
+                
+                const searchDrawer = (drawer) => {
+                    if(!drawer) return null;
+                    let k1 = nameA + "_" + nameB;
+                    if (drawer[k1]) return drawer[k1];
+                    let k2 = cleanA + "_" + cleanB;
+                    if (drawer[k2]) return drawer[k2];
+                    for (let k in drawer) {
+                        if (k.includes(cleanA) && k.includes(cleanB) && k.indexOf(cleanA) < k.indexOf(cleanB)) return drawer[k];
+                    }
+                    return null;
+                };
+
+                let primary = window.currentDirection === 'outbound' ? searchDrawer(outS2S) : searchDrawer(inS2S);
+                if (primary !== null) return primary;
+                let secondary = window.currentDirection === 'outbound' ? searchDrawer(inS2S) : searchDrawer(outS2S);
+                return secondary;
+            };
+
             futureStops.forEach((item, k) => {
                 let currentTarget = item.stop;
                 if (!currentTarget.lat || !currentTarget.lon) return;
                 
-                let s2sTime = 120; // 如果 TDX 沒資料，防呆預設 2 分鐘
+                let s2sTime = 0;
+                let startIndex = -1;
                 
                 if (k === 0) {
-                    // 🌟 你的神級公式：ETA = (目前距離 / 兩站總距離) * S2S時間
+                    if (prevStop) startIndex = window.stops.findIndex(s => s.id === prevStop.id);
+                } else {
+                    startIndex = futureStops[k-1].index;
+                }
+                let endIndex = item.index;
+
+                // 🌟 貪婪大跳躍演算法
+                if (startIndex !== -1 && startIndex < endIndex) {
+                    let curr = startIndex;
+                    while (curr < endIndex) {
+                        let foundMatch = false;
+                        for (let jump = endIndex; jump > curr; jump--) {
+                            let sA = window.stops[curr];
+                            let sB = window.stops[jump];
+                            if (!sA || !sB) continue;
+                            
+                            let t = getS2STime(sA.nameZH, sB.nameZH);
+                            if (t !== null && t > 0) {
+                                s2sTime += t; 
+                                curr = jump; 
+                                foundMatch = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!foundMatch) {
+                            let sA = window.stops[curr];
+                            let sB = window.stops[curr+1];
+                            if (sA && sB && sA.lat && sA.lon && sB.lat && sB.lon) {
+                                let d = getDist(parseFloat(sA.lat), parseFloat(sA.lon), parseFloat(sB.lat), parseFloat(sB.lon));
+                                s2sTime += (d * 0.15);
+                            }
+                            curr++; 
+                        }
+                    }
+                } else if (k === 0 && startIndex === -1) {
+                    let d = getDist(busLat, busLon, parseFloat(currentTarget.lat), parseFloat(currentTarget.lon));
+                    s2sTime = (d * 0.15);
+                }
+
+                if (k === 0) {
                     let currentDist = getDist(busLat, busLon, parseFloat(currentTarget.lat), parseFloat(currentTarget.lon));
                     let totalDist = currentDist; 
-                    
-                    let fromName = prevStop ? prevStop.nameZH : "";
-                    let toName = currentTarget.nameZH;
-                    if (fromName && s2sMap[fromName + "_" + toName]) {
-                        s2sTime = s2sMap[fromName + "_" + toName]; 
-                    }
-                    
                     if (prevStop && prevStop.lat && prevStop.lon) {
                         totalDist = getDist(parseFloat(prevStop.lat), parseFloat(prevStop.lon), parseFloat(currentTarget.lat), parseFloat(currentTarget.lon));
                     }
-
-                    // 計算比例 (最高 1.0，防止公車繞遠路導致比例暴增)
-                    let ratio = totalDist > 0 ? (currentDist / totalDist) : 1.0;
+                    
+                    let ratio = (totalDist > 0) ? (currentDist / totalDist) : 1.0;
                     if (ratio > 1.0) ratio = 1.0;
                     
                     accumulatedSeconds += (s2sTime * ratio);
-
-                    // 極度靠近時強制歸零
                     if (currentDist < 80) accumulatedSeconds = 0;
-                    
                 } else {
-                    // 🌟 第二站以後：直接累加 S2S 時間
-                    let prevTarget = futureStops[k-1].stop;
-                    let fromName = prevTarget.nameZH;
-                    let toName = currentTarget.nameZH;
-                    
-                    if (s2sMap[fromName + "_" + toName]) {
-                        accumulatedSeconds += s2sMap[fromName + "_" + toName];
-                    } else {
-                        // 如果這兩站 TDX 剛好沒資料，用直線距離預估一個時間 (防呆: 每公尺約需 0.15 秒)
-                        let d = getDist(parseFloat(prevTarget.lat), parseFloat(prevTarget.lon), parseFloat(currentTarget.lat), parseFloat(currentTarget.lon));
-                        accumulatedSeconds += (d * 0.15); 
-                    }
+                    accumulatedSeconds += s2sTime;
                 }
 
-                // 將秒數轉換為分鐘
                 let timeMinutes = Math.ceil(accumulatedSeconds / 60);
                 if (timeMinutes < 0) timeMinutes = 0;
 
                 let displayContent = `<div class="eta-cell-time">${timeMinutes}</div><div class="eta-cell-unit">分鐘</div>`;
                 let cellClass = "eta-cell";
 
-                // 第一站的進站閃爍邏輯
-                if (k === 0 && (!window.isNextStopMode || accumulatedSeconds <= 40)) {
+                if (k === 0 && (!window.isNextStopMode || (accumulatedSeconds <= 40 && accumulatedSeconds > 0))) {
                     displayContent = `<div class="eta-cell-time" style="font-size:5vh; padding: 20px 0;">即將抵達</div>`;
                     cellClass = "eta-cell arriving";
                 }
