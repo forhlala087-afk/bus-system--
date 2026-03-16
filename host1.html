@@ -231,6 +231,38 @@
     #pids-overlay.split-mode .stop-item-pids.future .stop-text-group-pids { 
         top: 0vh !important; 
     }
+  /* ========================================= */
+    /* 🔠 「已過站」、「當前站」、「未來站」文字大小總控制台 */
+    /* ========================================= */
+
+    /* --- 1. 【一般全螢幕模式】文字大小微調 --- */
+    
+    /* (上) 已過站 (Past) */
+    #pids-overlay .stop-item-pids.past .stop-name-zh-pids { font-size: 4.5vh; } /* 中文 */
+    #pids-overlay .stop-item-pids.past .stop-name-en-pids { font-size: 2.2vh; } /* 英文 */
+
+    /* (中) 當前站 (Active) */
+    #pids-overlay .stop-item-pids.active .stop-name-zh-pids { font-size: 5.5vh; }   /* 中文放大 */
+    #pids-overlay .stop-item-pids.active .stop-name-en-pids { font-size: 2.8vh; }   /* 英文放大 */
+
+    /* (下) 未來站 (Future) */
+    #pids-overlay .stop-item-pids.future .stop-name-zh-pids { font-size: 5.5vh; } /* 中文 */
+    #pids-overlay .stop-item-pids.future .stop-name-en-pids { font-size: 2.8vh; } /* 英文 */
+
+
+    /* --- 2. 【可口可樂雙屏模式】文字大小微調 --- */
+
+    /* 雙屏模式：(上) 已過站 */
+    #pids-overlay.split-mode .stop-item-pids.past .stop-name-zh-pids { font-size: 3.5vh !important; }
+    #pids-overlay.split-mode .stop-item-pids.past .stop-name-en-pids { font-size: 1.2vh !important; }
+
+    /* 雙屏模式：(中) 當前站 */
+    #pids-overlay.split-mode .stop-item-pids.active .stop-name-zh-pids { font-size: 4.8vh !important; }
+    #pids-overlay.split-mode .stop-item-pids.active .stop-name-en-pids { font-size: 1.8vh !important; }
+
+    /* 雙屏模式：(下) 未來站 */
+    #pids-overlay.split-mode .stop-item-pids.future .stop-name-zh-pids { font-size: 3.8vh !important; }
+    #pids-overlay.split-mode .stop-item-pids.future .stop-name-en-pids { font-size: 1.4vh !important; }
 </style>
 </head>
 <body>
