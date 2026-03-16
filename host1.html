@@ -196,6 +196,35 @@
     #pids-overlay.split-mode .stop-item-pids.future .dot-pids { 
         top: 1.5vh !important; 
     }
+  /* ========================================= */
+    /* 🔠 單獨控制「當前站」與「未來站」文字高度的開關 */
+    /* ========================================= */
+
+    /* --- 1. 【一般全螢幕模式】文字高度微調 --- */
+    
+    /* 當前站 (Active) 文字群組高度 */
+    #pids-overlay .stop-item-pids.active .stop-text-group-pids { 
+        position: relative;
+        top: -2.0vh;  /* 🌟 調整此數值：正數往下沉，負數 (例如 -1vh) 往上升 */
+    }
+
+    /* 未來站 (Future) 文字群組高度 (三個站會一起連動) */
+    #pids-overlay .stop-item-pids.future .stop-text-group-pids { 
+        position: relative;
+        top: -2.0vh;  /* 🌟 調整此數值控制未來站文字高度 */
+    }
+
+    /* --- 2. 【可口可樂雙屏模式】文字高度微調 --- */
+
+    /* 雙屏模式：當前站文字高度 */
+    #pids-overlay.split-mode .stop-item-pids.active .stop-text-group-pids { 
+        top: 0vh !important; /* 🌟 雙屏模式專用，可改為 -0.5vh 往上等 */
+    }
+
+    /* 雙屏模式：未來站文字高度 */
+    #pids-overlay.split-mode .stop-item-pids.future .stop-text-group-pids { 
+        top: 0vh !important; 
+    }
 </style>
 </head>
 <body>
