@@ -1120,7 +1120,16 @@
             if (count > 0) { renderAllStops(); alert(`✅ 已設 ${count} 個重啟點。`); } else { alert(`ℹ️ 無符合條件新站點。`); }
         };
 
-        function saveCurrentToProject() { window.projectData[window.currentDirection] = { stops: [...window.stops], routeName: window.routeName, destZH: window.destZH, destEN: window.destEN, stopCounter: window.stopCounter }; }
+        function saveCurrentToProject() { 
+            window.projectData[window.currentDirection] = { 
+                ...window.projectData[window.currentDirection], // 🌟 關鍵防護：保留原本的 s2s 與軌跡
+                stops: [...window.stops], 
+                routeName: window.routeName, 
+                destZH: window.destZH, 
+                destEN: window.destEN, 
+                stopCounter: window.stopCounter 
+            }; 
+        }
         function loadFromProject(dir) {
             window.currentDirection = dir; const data = window.projectData[dir];
             window.stops = data.stops || []; window.routeName = data.routeName || "---"; window.destZH = data.destZH || "---"; window.destEN = data.destEN || "---"; window.stopCounter = data.stopCounter || 0;
@@ -2527,14 +2536,10 @@
                 }
             }
 
-            let dirData = window.currentDirection === 'outbound' ? window.projectData.outbound : window.projectData.inbound;
-            let s2sFullDatabase = dirData.s2s || {}; 
-            
-            // ⌚ 獲取現在小時 (例如 "8")
-            let currentHour = new Date().getHours().toString();
-            let s2sHourMap = s2sFullDatabase[currentHour] || {};
-            let s2sAverageMap = s2sFullDatabase["average"] || {};
-            
+            // 🌟 拿出被保護好的兩個抽屜
+            let outS2S = window.projectData.outbound.s2s || {};
+            let inS2S = window.projectData.inbound.s2s || {};
+
             let accumulatedSeconds = 0;
             let busLat = window._lastValidLat || 0;
             let busLon = window._lastValidLon || 0;
@@ -2544,32 +2549,88 @@
                 if (isPidsValid(window.stops[i])) { prevStop = window.stops[i]; break; }
             }
 
+            // 🌟 雙抽屜通吃 + 模糊去括號查表法
+            const getS2STime = (nameA, nameB) => {
+                if (!nameA || !nameB) return null;
+                let cleanA = nameA.replace(/\(.*\)|（.*）|\s/g, '');
+                let cleanB = nameB.replace(/\(.*\)|（.*）|\s/g, '');
+                
+                const searchDrawer = (drawer) => {
+                    if(!drawer) return null;
+                    let k1 = nameA + "_" + nameB;
+                    if (drawer[k1]) return drawer[k1];
+                    let k2 = cleanA + "_" + cleanB;
+                    if (drawer[k2]) return drawer[k2];
+                    for (let k in drawer) {
+                        if (k.includes(cleanA) && k.includes(cleanB) && k.indexOf(cleanA) < k.indexOf(cleanB)) return drawer[k];
+                    }
+                    return null;
+                };
+
+                let primary = window.currentDirection === 'outbound' ? searchDrawer(outS2S) : searchDrawer(inS2S);
+                if (primary !== null) return primary;
+                let secondary = window.currentDirection === 'outbound' ? searchDrawer(inS2S) : searchDrawer(outS2S);
+                return secondary;
+            };
+
             futureStops.forEach((item, k) => {
                 let currentTarget = item.stop;
                 if (!currentTarget.lat || !currentTarget.lon) return;
                 
-                let s2sTime = 120;
-                let fromName = (k === 0) ? (prevStop ? prevStop.nameZH : "") : futureStops[k-1].stop.nameZH;
-                let toName = currentTarget.nameZH;
-                let segmentKey = fromName + "_" + toName;
-
-                // 🌟 智慧取值邏輯：1.目前小時 2.全天平均 3.物理公式防呆
-                if (fromName && s2sHourMap[segmentKey]) {
-                    s2sTime = s2sHourMap[segmentKey]; // 第一優先：目前小時
-                } else if (fromName && s2sAverageMap[segmentKey]) {
-                    s2sTime = s2sAverageMap[segmentKey]; // 第二優先：全天平均
+                let s2sTime = 0;
+                let startIndex = -1;
+                
+                if (k === 0) {
+                    if (prevStop) startIndex = window.stops.findIndex(s => s.id === prevStop.id);
                 } else {
-                    // 第三優先：物理公式 (距離 * 0.15)
-                    let d = (k === 0) ? getDist(busLat, busLon, parseFloat(currentTarget.lat), parseFloat(currentTarget.lon)) : getDist(parseFloat(futureStops[k-1].stop.lat), parseFloat(futureStops[k-1].stop.lon), parseFloat(currentTarget.lat), parseFloat(currentTarget.lon));
-                    s2sTime = (d * 0.15); 
+                    startIndex = futureStops[k-1].index;
+                }
+                let endIndex = item.index;
+
+                // 🌟 貪婪大跳躍演算法
+                if (startIndex !== -1 && startIndex < endIndex) {
+                    let curr = startIndex;
+                    while (curr < endIndex) {
+                        let foundMatch = false;
+                        for (let jump = endIndex; jump > curr; jump--) {
+                            let sA = window.stops[curr];
+                            let sB = window.stops[jump];
+                            if (!sA || !sB) continue;
+                            
+                            let t = getS2STime(sA.nameZH, sB.nameZH);
+                            if (t !== null && t > 0) {
+                                s2sTime += t; 
+                                curr = jump; 
+                                foundMatch = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!foundMatch) {
+                            let sA = window.stops[curr];
+                            let sB = window.stops[curr+1];
+                            if (sA && sB && sA.lat && sA.lon && sB.lat && sB.lon) {
+                                let d = getDist(parseFloat(sA.lat), parseFloat(sA.lon), parseFloat(sB.lat), parseFloat(sB.lon));
+                                s2sTime += (d * 0.15);
+                            }
+                            curr++; 
+                        }
+                    }
+                } else if (k === 0 && startIndex === -1) {
+                    let d = getDist(busLat, busLon, parseFloat(currentTarget.lat), parseFloat(currentTarget.lon));
+                    s2sTime = (d * 0.15);
                 }
 
                 if (k === 0) {
                     let currentDist = getDist(busLat, busLon, parseFloat(currentTarget.lat), parseFloat(currentTarget.lon));
-                    let totalDist = (prevStop && prevStop.lat) ? getDist(parseFloat(prevStop.lat), parseFloat(prevStop.lon), parseFloat(currentTarget.lat), parseFloat(currentTarget.lon)) : currentDist;
+                    let totalDist = currentDist; 
+                    if (prevStop && prevStop.lat && prevStop.lon) {
+                        totalDist = getDist(parseFloat(prevStop.lat), parseFloat(prevStop.lon), parseFloat(currentTarget.lat), parseFloat(currentTarget.lon));
+                    }
                     
                     let ratio = (totalDist > 0) ? (currentDist / totalDist) : 1.0;
-                    if (ratio > 1.2) ratio = 1.2;
+                    if (ratio > 1.0) ratio = 1.0;
+                    
                     accumulatedSeconds += (s2sTime * ratio);
                     if (currentDist < 80) accumulatedSeconds = 0;
                 } else {
