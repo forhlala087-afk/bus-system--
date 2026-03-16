@@ -38,118 +38,169 @@
     const db = getDatabase(app);
 
     const urlParams = new URLSearchParams(window.location.search);
-    const busId = urlParams.get('bus') || "9527"; 
+    const busId = urlParams.get('bus'); 
     const isAdmin = urlParams.get('admin') === 'true'; // 🌟 管理員特權判定
 
-    document.getElementById('bus-title').innerText = `目前車號：${busId} ${isAdmin ? '(管理員模式)' : ''}`;
     const overlay = document.getElementById('timeout-overlay');
+    const lockTitle = document.getElementById('lock-title');
+    const lockDesc = document.getElementById('lock-desc');
 
     // ==========================================
-    // 🛡️ 防重新整理結界 (Session Storage)
+    // 🛡️ 駭客防禦 1：網址隱形斗篷 (防止複製/分享網址)
     // ==========================================
+    if (window.history.replaceState && !isAdmin && busId) {
+        window.history.replaceState(null, null, window.location.pathname);
+    }
+
+    // ==========================================
+    // 🛡️ 駭客防禦 2：實體 QR Code 驗證 (防重整)
+    // ==========================================
+    if (!busId) {
+        document.getElementById('bus-title').innerText = "連線失敗";
+        lockTitle.innerText = "🚫 連結無效";
+        lockDesc.innerHTML = "請直接掃描公車椅背上的 QR Code。<br><br><span style='font-size:14px;color:#888;'>(為保護系統，重新整理或分享網址將自動失效)</span>";
+        overlay.style.display = 'flex';
+        throw new Error("非法進入，停止執行"); 
+    }
+
+    document.getElementById('bus-title').innerText = `目前車號：${busId} ${isAdmin ? '(管理員模式)' : ''}`;
+
+    // ==========================================
+    // 🛡️ 駭客防禦 3：15分鐘 / 到站智慧解鎖
+    // ==========================================
+    const deviceLockKey = 'locked_bus_' + busId;
+    const deviceStopKey = 'locked_stop_' + busId;
+    
     if (!isAdmin) {
-        const sessionKey = 'scanned_bus_' + busId;
-        if (sessionStorage.getItem(sessionKey)) {
-            // 抓到重新整理！直接鎖死畫面
-            document.getElementById('lock-title').innerText = "🚫 網頁已失效";
-            document.getElementById('lock-desc').innerHTML = "為防護系統安全，重新整理網頁將導致連結作廢。<br><br>請重新感應椅背 NFC，或掃描 QR Code。";
+        const lockTime = localStorage.getItem(deviceLockKey);
+        if (lockTime && Date.now() < parseInt(lockTime)) {
+            lockTitle.innerText = "⏳ 預約處理中";
+            lockTitle.style.color = "#f39c12";
+            lockDesc.innerHTML = "您已成功預約下車，請留意車廂螢幕提示。<br><br><span style='font-size:14px;color:#888;'>(同一裝置將於下車後，或 15 分鐘後自動解鎖)</span>";
             overlay.style.display = 'flex';
-        } else {
-            // 第一次進入，發放通行證
-            sessionStorage.setItem(sessionKey, 'true');
         }
     }
 
-    let timeLeft = 600; // 10分鐘結界
+    // ⏳ 倒數計時結界 (10分鐘不按也作廢)
+    let timeLeft = 600; 
     const timerEl = document.getElementById('countdown');
-    
     const timer = setInterval(() => {
-        if (overlay.style.display === 'flex') return; // 已被鎖就不用倒數了
+        if (overlay.style.display === 'flex' && lockTitle.innerText !== "✅ 預約已送出") return; 
         timeLeft--;
         let min = Math.floor(timeLeft / 60); let sec = timeLeft % 60;
         timerEl.innerText = `⏳ 預約有效時間：${min}:${sec.toString().padStart(2, '0')}`;
         if (timeLeft <= 0) { 
             clearInterval(timer); 
-            document.getElementById('lock-title').innerText = "⏱️ 逾時已失效";
-            document.getElementById('lock-desc').innerHTML = "您停留在此頁面過久，為防誤觸已自動鎖定。<br>需再次預約請重新感應。";
+            lockTitle.innerText = "⏱️ 逾時已失效";
+            lockTitle.style.color = "#e74c3c";
+            lockDesc.innerHTML = "您停留在此頁面過久，為防誤觸已自動鎖定。<br>需再次預約請重新掃描。";
             overlay.style.display = 'flex'; 
         }
     }, 1000);
 
     const container = document.getElementById('stop-list');
     
-    // 📡 監聽雲端資料
+    // 📡 監聽雲端資料 (雙向路線與智慧解鎖引擎)
     onValue(ref(db, `buses/${busId}/state`), (snap) => {
-        if (overlay.style.display === 'flex') return; // 如果鎖死就不渲染了
-        
-        container.innerHTML = '';
-        if (snap.exists()) {
-            const state = snap.val();
-            let upcoming = state.upcomingStops || [];
-            let opposite = state.oppositeStops || [];
-            let dist = state.nextStopDist || 0;
-            let currentDirText = state.direction === 'outbound' ? '去程' : '返程';
-            let oppDirText = state.direction === 'outbound' ? '返程' : '去程';
+        if (!snap.exists()) {
+            container.innerHTML = '<p>車輛尚未發車或無訊號</p>';
+            return;
+        }
 
-            if (upcoming.length === 0 && opposite.length === 0) {
-                container.innerHTML = '<p style="color:#888;">車輛待命中，或尚未發車</p>';
-                return;
-            }
+        const state = snap.val();
+        let upcoming = state.upcomingStops || [];
+        let opposite = state.oppositeStops || [];
+        let dist = state.nextStopDist || 0;
+        let currentStop = state.currentStop;
+        let currentDirText = state.direction === 'outbound' ? '去程' : '返程';
+        let oppDirText = state.direction === 'outbound' ? '返程' : '去程';
 
-            // --- 渲染目前方向站點 ---
-            if (upcoming.length > 0) {
-                let title = document.createElement('div');
-                title.className = 'section-title';
-                title.innerText = `🔵 目前行駛方向 (${currentDirText})`;
-                container.appendChild(title);
+        // 🌟 智慧解鎖判斷：公車到了預約站，或者已經過站
+        if (!isAdmin) {
+            let myLockedStop = localStorage.getItem(deviceStopKey);
+            let myLockTime = localStorage.getItem(deviceLockKey);
 
-                upcoming.forEach((stopName, index) => {
-                    let btn = document.createElement('button');
-                    btn.className = 'stop-btn';
+            if (myLockedStop && myLockTime) {
+                let isArrivedOrPassed = false;
+                // 如果目前站就是預約站，或者未來清單裡已經沒有這站了 (代表已開過)
+                if (currentStop === myLockedStop || (!upcoming.includes(myLockedStop) && !opposite.includes(myLockedStop))) {
+                    isArrivedOrPassed = true;
+                }
+                // 如果超過 15 分鐘
+                let isExpired = Date.now() > parseInt(myLockTime);
+
+                if (isArrivedOrPassed || isExpired) {
+                    localStorage.removeItem(deviceLockKey);
+                    localStorage.removeItem(deviceStopKey);
                     
-                    // 🌟 核心防禦：前兩站鎖定邏輯
-                    if (index === 0) {
-                        // 第一站：永遠鎖死
-                        btn.className += ' disabled-btn';
-                        btn.innerText = `🚫 ${stopName} (即將抵達/請直接按鈴)`;
-                        btn.disabled = true;
-                    } else if (index === 1) {
-                        // 第二站：檢查距離是否大於 500 公尺
-                        if (dist > 500) {
-                            btn.innerText = `📍 ${stopName}`;
-                            btn.onclick = () => requestStop(stopName);
-                        } else {
-                            btn.className += ' disabled-btn';
-                            btn.innerText = `🚫 ${stopName} (距離過近/請直接按鈴)`;
-                            btn.disabled = true;
-                        }
-                    } else {
-                        // 第三站以後：全開
+                    // 如果畫面目前是被鎖定的，通知乘客解鎖了
+                    if (overlay.style.display === 'flex' && (lockTitle.innerText.includes("處理中") || lockTitle.innerText.includes("預約已送出"))) {
+                        lockTitle.innerText = "📍 抵達預約站 / 裝置已解鎖";
+                        lockTitle.style.color = "#0078d4";
+                        lockDesc.innerHTML = "公車已抵達您的預約站點，或鎖定時間已解除。<br><br>若需預約其他站點，請重新掃描 QR Code。";
+                    }
+                }
+            }
+        }
+
+        // 如果被鎖死了就不更新下面的按鈕了
+        if (overlay.style.display === 'flex' && !lockTitle.innerText.includes("已解鎖")) return;
+
+        container.innerHTML = '';
+        if (upcoming.length === 0 && opposite.length === 0) {
+            container.innerHTML = '<p style="color:#888;">車輛待命中，或即將抵達終點</p>';
+            return;
+        }
+
+        // --- 渲染目前方向站點 (含 500m 防呆) ---
+        if (upcoming.length > 0) {
+            let title = document.createElement('div');
+            title.className = 'section-title';
+            title.innerText = `🔵 目前行駛方向 (${currentDirText})`;
+            container.appendChild(title);
+
+            upcoming.forEach((stopName, index) => {
+                let btn = document.createElement('button');
+                btn.className = 'stop-btn';
+                
+                if (index === 0) {
+                    // 第一站：永遠鎖死
+                    btn.className += ' disabled-btn';
+                    btn.innerText = `🚫 ${stopName} (即將抵達/請直接按鈴)`;
+                    btn.disabled = true;
+                } else if (index === 1) {
+                    // 第二站：檢查距離是否大於 500 公尺
+                    if (dist > 500) {
                         btn.innerText = `📍 ${stopName}`;
                         btn.onclick = () => requestStop(stopName);
+                    } else {
+                        btn.className += ' disabled-btn';
+                        btn.innerText = `🚫 ${stopName} (距離過近/請直接按鈴)`;
+                        btn.disabled = true;
                     }
-                    container.appendChild(btn);
-                });
-            }
-
-            // --- 渲染對向(返程)站點 ---
-            if (opposite.length > 0) {
-                let oppTitle = document.createElement('div');
-                oppTitle.className = 'section-title return-trip';
-                oppTitle.innerText = `⚪ 對向預約 (${oppDirText})`;
-                container.appendChild(oppTitle);
-
-                opposite.forEach((stopName) => {
-                    let btn = document.createElement('button');
-                    btn.className = 'stop-btn opposite-btn';
+                } else {
+                    // 第三站以後：全開
                     btn.innerText = `📍 ${stopName}`;
                     btn.onclick = () => requestStop(stopName);
-                    container.appendChild(btn);
-                });
-            }
+                }
+                container.appendChild(btn);
+            });
+        }
 
-        } else {
-            container.innerHTML = '<p>車輛尚未發車或無訊號</p>';
+        // --- 渲染對向(返程)站點 ---
+        if (opposite.length > 0) {
+            let oppTitle = document.createElement('div');
+            oppTitle.className = 'section-title return-trip';
+            oppTitle.innerText = `⚪ 對向預約 (${oppDirText})`;
+            container.appendChild(oppTitle);
+
+            opposite.forEach((stopName) => {
+                let btn = document.createElement('button');
+                btn.className = 'stop-btn opposite-btn';
+                btn.innerText = `📍 ${stopName}`;
+                btn.onclick = () => requestStop(stopName);
+                container.appendChild(btn);
+            });
         }
     });
 
@@ -158,11 +209,16 @@
         if(confirm(`確定要預約在「${stopName}」下車嗎？`)) {
             set(ref(db, `buses/${busId}/requested_stops/${stopName}`), true).then(() => {
                 timeLeft = 0; 
-                document.getElementById('lock-title').innerText = "✅ 預約已送出";
-                document.getElementById('lock-title').style.color = "#27ae60";
-                document.getElementById('lock-desc').innerHTML = `您已預約 <b>${stopName}</b><br><br>到站前車廂螢幕將自動閃爍提示，請安心休息。<br><br><span style="font-size:14px;color:#888;">(此預約網頁已消耗作廢)</span>`;
+                lockTitle.innerText = "✅ 預約已送出";
+                lockTitle.style.color = "#27ae60";
+                lockDesc.innerHTML = `您已預約 <b>${stopName}</b><br><br>到站前車廂螢幕將自動閃爍提示，請安心休息。<br><br><span style="font-size:14px;color:#888;">(同一裝置已暫時鎖定)</span>`;
                 overlay.style.display = 'flex';
-                // 為了防破解，把 sessionStorage 清除或標記已使用
+                
+                // 🌟 記住鎖定時間 (15分鐘) 與 預約的站名
+                if (!isAdmin) {
+                    localStorage.setItem(deviceLockKey, Date.now() + 15 * 60 * 1000); 
+                    localStorage.setItem(deviceStopKey, stopName); 
+                }
             }).catch(e => alert("網路錯誤，請稍後再試"));
         }
     };
