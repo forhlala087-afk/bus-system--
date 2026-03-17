@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Smart Transit 預約下車</title>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center; padding: 15px; background: #f4f6f9; color: #333; margin: 0; }
+        h2 { color: #0056b3; margin-bottom: 5px; }
+        .bus-title { font-size: 15px; color: #666; margin-top: 0; margin-bottom: 10px; font-weight: bold; }
+        
+        /* 倒數計時與進度條樣式 */
+        .timer-container { background: #fff; padding: 12px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 15px; border: 1px solid #eee; }
+        #countdown { font-size: 16px; font-weight: bold; color: #333; margin-bottom: 8px; }
+        #progress-bg { width: 100%; background: #e0e0e0; border-radius: 8px; height: 12px; overflow: hidden; }
+        #progress-bar { height: 100%; width: 100%; background: #27ae60; transition: width 1s linear, background-color 0.5s ease; }
+
+        .section-title { font-size: 16px; font-weight: bold; text-align: left; margin: 15px 0 10px 5px; color: #444; border-left: 4px solid #0056b3; padding-left: 8px;}
+        .section-title.return-trip { border-left-color: #e67e22; color: #e67e22; margin-top: 30px;}
+
+        .stop-btn { display: block; width: 100%; padding: 16px; margin: 8px 0; background: #fff; border: 2px solid #ddd; border-radius: 12px; font-size: 18px; font-weight: bold; color: #333; box-shadow: 0 2px 5px rgba(0,0,0,0.05); cursor: pointer; transition: 0.2s; text-align: left; padding-left: 20px;}
+        .stop-btn:active { background: #e3f2fd; border-color: #0078d4; transform: scale(0.98); }
+        
+        .stop-btn.disabled-btn { background: #e9ecef; color: #999; border-color: #dee2e6; cursor: not-allowed; box-shadow: none; }
+        .stop-btn.opposite-btn { border-color: #ffeaa7; background: #fffdf5; }
+
+        .disabled-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(255,255,255,0.98); z-index: 1000; flex-direction: column; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box;}
+    </style>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getDatabase, ref, onValue, set, get, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDjxGWY6hN4yx-v2pa6I5UItxy_PNaOPK8",
+            databaseURL: "https://bus-remote-control-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "bus-remote-control"
+        };
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        const liffId = "2009509232-blZgSdfi"; 
+        const overlay = document.getElementById('timeout-overlay');
+        const lockTitle = document.getElementById('lock-title');
+        const lockDesc = document.getElementById('lock-desc');
+        const timerEl = document.getElementById('countdown');
+        const progressBar = document.getElementById('progress-bar');
+        const container = document.getElementById('stop-list');
+
+        let currentUser = { uid: "", name: "" };
+        let currentBusId = "";
+        let isAdminMode = false;
+        let expireTime = 0;
+        const TOTAL_SECONDS = 600;
+
+        // 啟動系統
+        async function init() {
+            try {
+                await liff.init({ liffId: liffId });
+
+                // 🛡️ 環境檢查：只能在 LINE 裡開
+                if (!liff.isInClient() && !location.search.includes('admin=true')) {
+                    showOverlay("⚠️ 存取受限", "為了確保安全性，本系統僅限在 LINE App 內使用。<br>請直接掃描公車椅背上的 QR Code。");
+                    return;
+                }
+
+                if (!liff.isLoggedIn()) { liff.login(); return; }
+
+                const profile = await liff.getProfile();
+                currentUser.uid = profile.userId;
+                currentUser.name = profile.displayName;
+
+                // 抓取網址參數
+                const urlParams = new URLSearchParams(window.location.search);
+                currentBusId = urlParams.get('bus') || localStorage.getItem('my_active_bus_id');
+                isAdminMode = urlParams.get('admin') === 'true';
+
+                if (!currentBusId) {
+                    showOverlay("🚫 連結無效", "請重新掃描公車椅背上的 QR Code。");
+                    return;
+                }
+
+                // 💀 雲端黑名單檢查
+                const today = new Date().toLocaleDateString().replace(/\//g, '-');
+                const countRef = ref(db, `usage_stats/${currentBusId}/${today}/${currentUser.uid}/count`);
+                const countSnap = await get(countRef);
+                const count = countSnap.exists() ? countSnap.val() : 0;
+
+                if (count >= 5 && !isAdminMode) {
+                    showOverlay("🚫 預約次數超限", `嘿 ${currentUser.name}，您今日預約次數已達上限(5次)。<br>為維護他人權益，請直接按車上鈴！`);
+                    return;
+                }
+
+                // 初始化 UI
+                document.getElementById('bus-title').innerText = `目前車號：${currentBusId} (乘客：${currentUser.name})`;
+                startTimer();
+                startBusListener(count);
+
+            } catch (err) {
+                console.error(err);
+                showOverlay("⚠️ 系統錯誤", "初始化失敗，請稍後再試。");
+            }
+        }
+
+        // 倒數計時邏輯 (維持原本視覺)
+        function startTimer() {
+            expireTime = Date.now() + TOTAL_SECONDS * 1000;
+            const timer = setInterval(() => {
+                let timeLeft = Math.floor((expireTime - Date.now()) / 1000);
+                if (timeLeft <= 0) {
+                    clearInterval(timer);
+                    showOverlay("⏱️ 逾時已失效", "您停留在此頁面過久，為防誤觸已自動鎖定。<br>需再次預約請重新掃描。");
+                    return;
+                }
+                let min = Math.floor(timeLeft / 60); let sec = timeLeft % 60;
+                timerEl.innerText = `⏳ 預約有效時間：${min}:${sec.toString().padStart(2, '0')}`;
+                let percentage = (timeLeft / TOTAL_SECONDS) * 100;
+                progressBar.style.width = percentage + '%';
+                progressBar.style.background = percentage > 50 ? '#27ae60' : (percentage > 20 ? '#f1c40f' : '#e74c3c');
+            }, 1000);
+        }
+
+        // 監聽公車狀態 (維持原本複雜邏輯)
+        function startBusListener(cloudCount) {
+            onValue(ref(db, `buses/${currentBusId}/state`), (snap) => {
+                if (!snap.exists()) { container.innerHTML = "車輛尚未發車"; return; }
+                const state = snap.val();
+                
+                // 檢查是否已抵達預約站點 (解鎖邏輯)
+                const myLockedStop = localStorage.getItem('my_locked_stop');
+                if (myLockedStop && (state.currentStop === myLockedStop || !state.upcomingStops?.includes(myLockedStop))) {
+                    localStorage.removeItem('my_locked_stop');
+                    localStorage.removeItem('my_active_bus_id');
+                    overlay.style.display = 'none';
+                }
+
+                renderStops(state, cloudCount);
+            });
+        }
+
+        function renderStops(state, cloudCount) {
+            if (overlay.style.display === 'flex' && !lockTitle.innerText.includes("處理中")) return;
+            
+            container.innerHTML = "";
+            const upcoming = state.upcomingStops || [];
+            const opposite = state.oppositeStops || [];
+            const dist = state.nextStopDist || 0;
+            const dirText = state.direction === 'outbound' ? '去程' : '返程';
+            const oppText = state.direction === 'outbound' ? '返程' : '去程';
+
+            if (upcoming.length > 0) {
+                addTitle(`🔵 目前行駛方向 (${dirText})`, 'section-title');
+                upcoming.forEach((stop, index) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'stop-btn';
+                    if (index === 0) { 
+                        btn.className += ' disabled-btn'; btn.innerText = `🚫 ${stop} (即將抵達)`; 
+                    } else if (index === 1 && dist < 500) {
+                        btn.className += ' disabled-btn'; btn.innerText = `🚫 ${stop} (距離過近)`;
+                    } else {
+                        btn.innerText = `📍 ${stop}`;
+                        btn.onclick = () => handleRequest(stop, cloudCount);
+                    }
+                    container.appendChild(btn);
+                });
+            }
+
+            if (opposite.length > 0) {
+                addTitle(`⚪ 對向預約 (${oppText})`, 'section-title return-trip');
+                opposite.forEach(stop => {
+                    const btn = document.createElement('button');
+                    btn.className = 'stop-btn opposite-btn';
+                    btn.innerText = `📍 ${stop}`;
+                    btn.onclick = () => handleRequest(stop, cloudCount);
+                    container.appendChild(btn);
+                });
+            }
+        }
+
+        async function handleRequest(stopName, cloudCount) {
+            if (!confirm(`確定要預約在「${stopName}」下車嗎？`)) return;
+
+            const today = new Date().toLocaleDateString().replace(/\//g, '-');
+            const userStatRef = ref(db, `usage_stats/${currentBusId}/${today}/${currentUser.uid}/count`);
+
+            try {
+                await set(ref(db, `buses/${currentBusId}/requested_stops/${stopName}`), true);
+                
+                // 雲端計數器 +1 (原子操作)
+                if (!isAdminMode) {
+                    await runTransaction(userStatRef, (current) => (current || 0) + 1);
+                }
+
+                localStorage.setItem('my_locked_stop', stopName);
+                localStorage.setItem('my_active_bus_id', currentBusId);
+
+                showOverlay("✅ 預約已送出", `您已預約 <b>${stopName}</b><br><br>到站前螢幕將自動閃爍提示。<br><br><span style="font-size:14px;color:#888;">今日已預約 ${cloudCount + 1} / 5 次</span>`);
+            } catch (e) { alert("發送失敗"); }
+        }
+
+        function addTitle(text, className) {
+            const div = document.createElement('div');
+            div.className = className; div.innerText = text;
+            container.appendChild(div);
+        }
+
+        function showOverlay(title, desc) {
+            lockTitle.innerHTML = title;
+            lockDesc.innerHTML = desc;
+            overlay.style.display = 'flex';
+        }
+
+        init();
+    </script>
+</head>
+<body>
+    <h2>🚌 智慧公車預約系統</h2>
+    <p class="bus-title" id="bus-title">正在驗證身分...</p>
+    
+    <div class="timer-container">
+        <div id="countdown">⏳ 預約有效時間：10:00</div>
+        <div id="progress-bg"><div id="progress-bar"></div></div>
+    </div>
+    
+    <div id="stop-list">
+        <p>📡 載入最新路線中...</p>
+    </div>
+
+    <div id="timeout-overlay" class="disabled-overlay">
+        <h1 id="lock-title" style="color:#0078d4; margin-bottom:10px;"></h1>
+        <p id="lock-desc" style="color:#555; line-height: 1.5; font-size:18px;"></p>
+    </div>
+</body>
+</html>
