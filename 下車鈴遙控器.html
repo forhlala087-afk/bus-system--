@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>📱 旗艦版司機遙控器 (簡潔版)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center; padding: 15px; background: #2c3e50; color: white; margin: 0; display: flex; flex-direction: column; box-sizing: border-box; min-height: 100vh; overflow-x: hidden; }
+    h2 { margin-top: 5px; margin-bottom: 15px; color: #ecf0f1; font-size: 22px; display: flex; justify-content: space-between; align-items: center; }
+    
+    /* 頂部設定按鈕 */
+    .btn-settings-icon { background: transparent; border: none; font-size: 24px; color: white; cursor: pointer; }
+
+    .pairing-box { background: #34495e; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+    .input-group { display: flex; align-items: center; gap: 8px; justify-content: center; }
+    input[type="text"], input[type="password"] { padding: 12px; font-size: 16px; width: 60%; border-radius: 8px; border: none; text-align: center; font-weight: bold; }
+    .btn-connect { padding: 12px 15px; font-size: 16px; font-weight: bold; background: #27ae60; color: white; border: none; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+    .btn-connect.connected { background: #e67e22; }
+    
+    .status-panel { background: #16a085; padding: 12px; border-radius: 10px; margin-bottom: 15px; text-align: left; font-size: 15px; line-height: 1.5; font-weight: bold; box-shadow: inset 0 2px 5px rgba(0,0,0,0.1); transition: all 0.3s ease; }
+    .status-panel span { color: #f1c40f; font-size: 18px; }
+    
+    /* ========================================= */
+    /* 🚨 預約下車：紫紅呼吸燈特效 */
+    /* ========================================= */
+    .status-panel.stop-requested {
+        background: #8e44ad; 
+        box-shadow: 0 0 15px #9b59b6, inset 0 0 20px rgba(0,0,0,0.5);
+        animation: breathePurple 1.5s infinite alternate;
+        border: 2px solid #e056fd;
+    }
+    .status-panel.stop-requested span {
+        color: #fff;
+        text-shadow: 0 0 10px rgba(255,255,255,0.8);
+    }
+    
+    @keyframes breathePurple {
+        0% { background: #8e44ad; box-shadow: 0 0 15px #9b59b6; }
+        100% { background: #e74c3c; box-shadow: 0 0 30px #ff7675; }
+    }
+    
+    /* 🔔 新增的下車鈴提示文字區塊 */
+    .bell-alert-text {
+        display: none;
+        font-size: 20px;
+        font-weight: 900;
+        color: #fff;
+        text-align: center;
+        background: rgba(0,0,0,0.3);
+        padding: 8px;
+        border-radius: 8px;
+        margin-top: 10px;
+        animation: flashText 1s infinite;
+    }
+    .status-panel.stop-requested .bell-alert-text {
+        display: block; 
+    }
+    @keyframes flashText {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+    /* ========================================= */
+
+    /* 主控區 */
+    .control-panel { flex: 1; display: flex; flex-direction: column; gap: 12px; pointer-events: none; opacity: 0.3; transition: 0.3s; }
+    .control-panel.active { pointer-events: auto; opacity: 1; }
+    .control-card { background: #34495e; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
+    .card-title { font-size: 14px; color: #bdc3c7; margin-bottom: 10px; text-align: left; font-weight: bold; display: flex; justify-content: space-between;}
+    select { width: 100%; padding: 12px; font-size: 16px; border-radius: 8px; border: none; margin-bottom: 10px; font-weight: bold; background: #ecf0f1; color: #333; }
+    
+    .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btn-action { padding: 15px; border: none; border-radius: 10px; font-size: 18px; font-weight: bold; color: white; cursor: pointer; box-shadow: 0 4px 0 rgba(0,0,0,0.2); transition: 0.1s; display: flex; justify-content: center; align-items: center; gap: 6px; width: 100%; box-sizing: border-box; }
+    .btn-action:active { transform: translateY(4px); box-shadow: none; }
+    .btn-out  { background: #2980b9; box-shadow: 0 4px 0 #1f618d; }
+    .btn-in   { background: #8e44ad; box-shadow: 0 4px 0 #732d91; }
+    .btn-reset{ background: #d35400; box-shadow: 0 4px 0 #a04000; font-size: 20px; }
+    
+    /* 側邊設定抽屜 (Drawer) */
+    .drawer-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 20000; backdrop-filter: blur(2px); opacity: 0; transition: opacity 0.3s; }
+    .drawer-overlay.open { display: block; opacity: 1; }
+    .settings-drawer { position: fixed; top: 0; right: -300px; width: 280px; height: 100%; background: #fff; z-index: 20001; box-shadow: -5px 0 15px rgba(0,0,0,0.3); transition: right 0.3s ease-in-out; display: flex; flex-direction: column; color: #333; text-align: left; }
+    .settings-drawer.open { right: 0; }
+    .drawer-header { padding: 20px; background: #2c3e50; color: white; font-size: 18px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+    .btn-close-drawer { background: transparent; border: none; color: white; font-size: 24px; cursor: pointer; }
+    .drawer-content { padding: 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 15px; }
+
+    /* 抽屜內的按鈕樣式 */
+    .drawer-btn { padding: 12px; font-size: 15px; font-weight: bold; border-radius: 8px; border: none; cursor: pointer; color: white; text-align: center; }
+    .btn-pids { background: #e67e22; } .btn-pids.active { background: #c0392b; }
+    .btn-gps { background: #007bff; } .btn-gps.active { background: #dc3545; }
+    .btn-audio-set { background: #9b59b6; }
+    
+    .slider-container { display: flex; align-items: center; gap: 10px; background: #f0f3f4; padding: 10px; border-radius: 8px;}
+    input[type="range"] { flex: 1; accent-color: #2ecc71; }
+    
+    /* 其他彈窗 */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 30000; justify-content: center; align-items: center; backdrop-filter: blur(3px); }
+    .modal-content { background: white; color: #333; width: 90%; max-width: 400px; max-height: 85vh; border-radius: 16px; padding: 20px; overflow-y: auto; text-align: left; }
+    .modal-header { font-size: 20px; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; display: flex; justify-content: space-between; }
+    .audio-setting-section { background: #f8f9fa; padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #eee; }
+    #loading-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.95); z-index: 40000; justify-content: center; align-items: center; flex-direction: column; color:#333; font-weight:bold; font-size:18px; line-height:1.5;}
+    #toast { visibility: hidden; position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 20px; z-index: 99999; }
+</style>
+</head>
+<body>
+
+    <audio id="apple-audio-player" playsinline></audio>
+
+    <h2>
+        <span>🚌 公車遙控器</span>
+        <button class="btn-settings-icon" onclick="openDrawer()">⚙️</button>
+    </h2>
+
+    <div class="pairing-box">
+        <div style="display:flex; flex-direction:column; gap:8px;">
+            <input type="text" id="station-id" placeholder="輸入調度站代號 (例: Station_A)" style="width:100%;">
+            <div class="input-group">
+                <input type="text" id="bus-id" placeholder="車號 (例:9527)">
+                <button id="btn-connect" class="btn-connect" onclick="toggleConnect()">連線上線</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="status-panel" class="status-panel" style="display:none;">
+        <div style="margin-bottom: 10px;">路線：<span id="st-route">---</span> (<span id="st-dir">---</span>)</div>
+        <div style="margin-bottom: 15px;">狀態：<span id="st-stop" style="font-size:22px; color:#fff;">---</span></div>
+        
+        <div id="bell-alert" class="bell-alert-text">🔔 本站有人下車！</div>
+
+        <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; text-align: center; margin-top: 15px;">
+            <label style="font-size: 13px; color: #ecf0f1; display: block; margin-bottom: 5px;">🚨 行車狀態</label>
+            <select id="remote-driver-status" onchange="sendDriverStatus()" style="margin: 0; font-size: 15px; border: 2px solid #27ae60; background: #e8f8f5; color: #27ae60;">
+                <option value="normal" selected>🟢 正常營運</option>
+                <option value="standby">☕ 待命/休息</option>
+                <option value="jam">🐢 塞車延誤</option>
+                <option value="refuel">⛽ 加油/洗車</option>
+                <option value="breakdown">🔧 車輛故障</option>
+                <option value="accident">💥 發生事故</option>
+                <option value="rescue">🆘 緊急救援</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="control-panel" class="control-panel">
+        <div class="control-card">
+            <div class="card-title">📍 路線載入與方向 (跟隨主機)</div>
+            <select id="route-select"><option value="">等待主機回傳路線列表...</option></select>
+            <div class="btn-grid">
+                <button class="btn-action btn-out" onclick="confirmAndLoadRoute('outbound')">🔵 去程</button>
+                <button class="btn-action btn-in" onclick="confirmAndLoadRoute('inbound')">⚪ 返程</button>
+            </div>
+        </div>
+
+        <div class="control-card">
+            <div class="card-title">🔄 路線進度控制</div>
+            <button class="btn-action btn-reset" onclick="sendCommand('RESET')">🔄 重啟</button>
+        </div>
+    </div>
+
+    <div id="drawer-overlay" class="drawer-overlay" onclick="closeDrawer()"></div>
+    <div id="settings-drawer" class="settings-drawer">
+        <div class="drawer-header">
+            系統進階設定
+            <button class="btn-close-drawer" onclick="closeDrawer()">✕</button>
+        </div>
+        <div class="drawer-content">
+            
+            <div style="font-size:14px; font-weight:bold; color:#555;">🎙️ 手動站點切換</div>
+            <div style="display: flex; gap: 10px;">
+                <button class="drawer-btn" style="flex:1; background: #7f8c8d;" onclick="sendCommand('PREV'); closeDrawer();">◀ 上一站</button>
+                <button class="drawer-btn" style="flex:1.5; background: #c0392b;" onclick="sendCommand('NEXT'); closeDrawer();">▶ 抵達/下一站</button>
+            </div>
+
+            <hr style="border:0; border-top:1px solid #eee; width:100%;">
+
+            <button id="btn-remote-pids" class="drawer-btn btn-pids" onclick="sendCommand('TOGGLE_PIDS')">🚌 啟動/停止 公車看板</button>
+            
+            <hr style="border:0; border-top:1px solid #eee; width:100%;">
+            
+            <button id="btn-gps" class="drawer-btn btn-gps" onclick="toggleGPS()">📡 開啟手機 GPS 串流</button>
+            <div id="gps-status" style="font-size:12px; color:#7f8c8d; text-align:center;">GPS 等待啟動...</div>
+            
+            <hr style="border:0; border-top:1px solid #eee; width:100%;">
+            
+            <div style="font-size:14px; font-weight:bold; color:#555;">🔊 主機音量 (<span id="vol-display">100</span>%)</div>
+            <div class="slider-container">
+                <span>🔈</span><input type="range" id="vol-slider" min="0" max="100" value="100" onchange="sendVolume(this.value)" oninput="document.getElementById('vol-display').innerText=this.value"><span>🔊</span>
+            </div>
+            
+            <hr style="border:0; border-top:1px solid #eee; width:100%;">
+            
+            <button class="drawer-btn btn-audio-set" onclick="closeDrawer(); document.getElementById('audio-modal').style.display='flex'">⚙️ 遙控器語音包設定</button>
+        </div>
+    </div>
+
+    <div id="audio-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">⚙️ 手動匯入語音包<button onclick="document.getElementById('audio-modal').style.display='none'" style="border:none;background:none;font-size:20px;">✕</button></div>
+            <div class="audio-setting-section" style="background:#e3f2fd; border-color:#b3e5fc;">
+                <h4 style="margin-top:0; color:#0277bd;">☁️ 同步 GitHub 語音包</h4>
+                <p style="font-size:12px; color:#555;">(匯入時系統會自動詢問是否需要清空舊音檔)</p>
+                <input type="text" id="gh-repo-url" placeholder="專案連結 (例: https://github.com/...)" style="width:100%; margin-bottom:8px; box-sizing:border-box; padding:8px;">
+                <input type="password" id="gh-token" placeholder="GitHub 金鑰 (ghp_...)" style="width:100%; margin-bottom:10px; box-sizing:border-box; padding:8px;">
+                <button onclick="manualSyncGitHub()" style="width:100%; padding:10px; background:#0288d1; color:white; border:none; border-radius:6px; font-weight:bold;">下載 audio.zip</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="loading-overlay">處理中，請稍候...</div>
+    <div id="toast"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getDatabase, ref, set, get, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDjxGWY6hN4yx-v2pa6I5UItxy_PNaOPK8", authDomain: "bus-remote-control.firebaseapp.com",
+            databaseURL: "https://bus-remote-control-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "bus-remote-control", storageBucket: "bus-remote-control.firebasestorage.app",
+            messagingSenderId: "1056982339472", appId: "1:1056982339472:web:533e3875eab63b32936d15"
+        };
+        const app = initializeApp(firebaseConfig); window.fbDb = getDatabase(app);
+        
+        let isConnected = false; let currentBusId = ""; let currentStationId = ""; 
+        let unsubscribeState = null; let unsubscribeAudio = null; let unsubscribeSettings = null; let unsubscribeAudioConfig = null; let unsubscribeAntiHijack = null;
+        let unsubscribeReqStops = null; window._currentRequestedStops = new Set();
+        let gpsWatchId = null; let gpsIntervalId = null; let isGpsActive = false; let wakeLock = null; let heartbeatInterval = null;
+
+        window.openDrawer = function() {
+            document.getElementById('drawer-overlay').classList.add('open');
+            document.getElementById('settings-drawer').classList.add('open');
+        }
+        window.closeDrawer = function() {
+            document.getElementById('drawer-overlay').classList.remove('open');
+            document.getElementById('settings-drawer').classList.remove('open');
+        }
+
+        window._mySessionId = localStorage.getItem('remote_device_session_id');
+        if (!window._mySessionId) {
+            window._mySessionId = "REMOTE_" + Date.now() + "_" + Math.floor(Math.random() * 10000);
+            localStorage.setItem('remote_device_session_id', window._mySessionId);
+        }
+
+        window.pidsAssets = { common: {}, zh: {}, en: {}, tw: {}, hk: {}, yue: {} };
+        let pidsPlayQueue = []; window.pidsIsPlaying = false; let pidsAnnounceId = 0;
+        window._globalVolume = 1.0; 
+        
+        const globalPlayer = document.getElementById('apple-audio-player');
+        let isAudioUnlocked = false;
+        let globalStationSettings = { l1:'zh', l2:'en', l3:'tw', l4:'none', format:'auto', mode:'all' };
+
+        window.onload = async function() {
+            document.getElementById('gh-repo-url').value = localStorage.getItem('remote_github_url') || '';
+            document.getElementById('gh-token').value = localStorage.getItem('remote_github_token') || '';
+            
+            const savedBusId = localStorage.getItem('remote_saved_bus_id');
+            const savedStationId = localStorage.getItem('remote_saved_station_id');
+            if (savedBusId) document.getElementById('bus-id').value = savedBusId;
+            if (savedStationId) document.getElementById('station-id').value = savedStationId;
+
+            await loadAllPidsAudioFromDB();
+            if (!isGpsActive) window.toggleGPS();
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'hidden' && isConnected) {
+                    set(ref(window.fbDb, 'buses/' + currentBusId + '/remote_status'), { 
+                        alive: false, sessionId: window._mySessionId, timestamp: Date.now() 
+                    }).catch(e=>{});
+                    window.toggleConnect();
+                }
+            });
+        };
+
+        window.showToast = function(m) { 
+            const t = document.getElementById('toast'); 
+            t.innerText = m; t.style.visibility = 'visible'; 
+            setTimeout(() => { t.style.visibility = 'hidden'; }, 3000); 
+        };
+
+        window.sendDriverStatus = function() {
+            const selectEl = document.getElementById('remote-driver-status');
+            const val = selectEl.value;
+            const text = selectEl.options[selectEl.selectedIndex].text;
+            
+            if (val === 'normal') {
+                selectEl.style.background = '#e8f8f5'; selectEl.style.color = '#27ae60'; selectEl.style.borderColor = '#27ae60';
+            } else {
+                selectEl.style.background = '#fdedec'; selectEl.style.color = '#c0392b'; selectEl.style.borderColor = '#e74c3c';
+            }
+
+            if (isConnected && currentBusId && window.fbDb) {
+                set(ref(window.fbDb, 'buses/' + currentBusId + '/command'), {
+                    action: 'SET_STATUS',
+                    payload: { status: val, text: text },
+                    timestamp: Date.now()
+                }).catch(e=>{});
+                window.showToast(`📡 已回報：${text}`);
+            } else {
+                alert("請先連線上線！");
+            }
+        };
+
+        window.toggleConnect = async function() {
+            const busInput = document.getElementById('bus-id'); 
+            const stationInput = document.getElementById('station-id');
+            const btn = document.getElementById('btn-connect');
+            
+            if (!isConnected) {
+                if (!busInput.value.trim() || !stationInput.value.trim()) { alert("請輸入調度站代號與車號！"); return; }
+                currentBusId = busInput.value.trim(); currentStationId = stationInput.value.trim();
+                
+                if (!isAudioUnlocked) {
+                    try {
+                        globalPlayer.src = "data:audio/mp3;base64,//OwgAAAAAAAAAAAAAAAWWAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==";
+                        await globalPlayer.play(); globalPlayer.pause();
+                    } catch(e) {}
+                    if (window.speechSynthesis) window.speechSynthesis.speak(new SpeechSynthesisUtterance(''));
+                    isAudioUnlocked = true;
+                }
+
+                btn.innerText = "身分驗證中...";
+                const authSnap = await get(ref(window.fbDb, `stations/${currentStationId}/buses/${currentBusId}`));
+                if (!authSnap.exists()) {
+                    alert(`❌ 授權失敗：車號 ${currentBusId} 未登錄於 ${currentStationId} 調度站！`);
+                    btn.innerText = "連線上線"; return; 
+                }
+
+                localStorage.setItem('remote_saved_bus_id', currentBusId);
+                localStorage.setItem('remote_saved_station_id', currentStationId);
+
+                busInput.disabled = true; stationInput.disabled = true; isConnected = true;
+                btn.innerText = "斷開連線"; btn.classList.add("connected");
+                document.getElementById('control-panel').classList.add("active");
+                document.getElementById('status-panel').style.display = "block";
+                window.showToast("✅ 已連線，播音系統解鎖成功！");
+
+                unsubscribeAntiHijack = onValue(ref(window.fbDb, `buses/${currentBusId}/remote_status`), (snap) => {
+                    if (snap.exists()) {
+                        const data = snap.val();
+                        if (data.sessionId && data.sessionId !== window._mySessionId) {
+                            alert("⚠️ 系統警告：已有另一台裝置登入此車號！\n您的遙控器已被強制登出。");
+                            window.location.reload(); 
+                        }
+                    }
+                });
+
+                listenToHostState(); listenToAudioTrigger();
+
+                unsubscribeSettings = onValue(ref(window.fbDb, `stations/${currentStationId}/settings`), (snap) => {
+                    if(snap.exists()) globalStationSettings = snap.val();
+                });
+
+                unsubscribeAudioConfig = onValue(ref(window.fbDb, `stations/${currentStationId}/audio_config`), (snap) => {
+                    if(snap.exists()) {
+                        const cfg = snap.val();
+                        const savedUrl = localStorage.getItem('remote_github_url');
+                        if (cfg.url && cfg.token && cfg.url !== savedUrl) {
+                            window.showToast("☁️ 偵測到雲端新資料包，開始自動同步...");
+                            window.syncGitHubAudio(cfg.url, cfg.token, true);
+                        }
+                    }
+                });
+                
+                heartbeatInterval = setInterval(() => { 
+                    set(ref(window.fbDb, 'buses/' + currentBusId + '/remote_status'), { 
+                        alive: true, sessionId: window._mySessionId, timestamp: Date.now() 
+                    }).catch(e=>{}); 
+                }, 3000); 
+            } else {
+                busInput.disabled = false; stationInput.disabled = false; isConnected = false; 
+                btn.innerText = "連線上線"; btn.classList.remove("connected");
+                document.getElementById('control-panel').classList.remove("active"); document.getElementById('status-panel').style.display = "none";
+                if(unsubscribeState) { unsubscribeState(); unsubscribeState = null; }
+                if(unsubscribeAudio) { unsubscribeAudio(); unsubscribeAudio = null; }
+                if(unsubscribeSettings) { unsubscribeSettings(); unsubscribeSettings = null; }
+                if(unsubscribeAudioConfig) { unsubscribeAudioConfig(); unsubscribeAudioConfig = null; }
+                if(unsubscribeAntiHijack) { unsubscribeAntiHijack(); unsubscribeAntiHijack = null; } 
+                if(unsubscribeReqStops) { unsubscribeReqStops(); unsubscribeReqStops = null; } 
+                if(heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+            }
+        };
+
+        const sendPositionToFirebase = (pos) => {
+            const lat = pos.coords.latitude; const lon = pos.coords.longitude;
+            if (isConnected && currentBusId) {
+                set(ref(window.fbDb, 'buses/' + currentBusId + '/gps'), { lat: lat, lon: lon, heading: pos.coords.heading !== null ? pos.coords.heading : -1, speed: pos.coords.speed !== null ? pos.coords.speed : 0, timestamp: Date.now() }).catch(e=>{});
+            }
+            const d = new Date(); const timeStr = d.getHours() + ":" + d.getMinutes().toString().padStart(2, '0') + ":" + d.getSeconds().toString().padStart(2, '0');
+            const gpsStatusEl = document.getElementById('gps-status');
+            if(gpsStatusEl) gpsStatusEl.innerHTML = `✅ 座標即時更新中 (${timeStr})`;
+        };
+
+        window.toggleGPS = async function() {
+            const btnGps = document.getElementById('btn-gps'); const gpsStatus = document.getElementById('gps-status');
+            if (!isGpsActive) {
+                if (!navigator.geolocation) { alert("此設備不支援 GPS！"); return; }
+                try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e){}
+                btnGps.innerText = "🛑 關閉手機 GPS 串流"; btnGps.classList.add("active"); isGpsActive = true; gpsStatus.innerText = "定位啟動中，請稍候...";
+                
+                navigator.geolocation.getCurrentPosition(sendPositionToFirebase, (err) => { gpsStatus.innerText = "⚠️ GPS 讀取失敗"; }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+                gpsWatchId = navigator.geolocation.watchPosition(sendPositionToFirebase, () => {}, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
+                gpsIntervalId = setInterval(() => { navigator.geolocation.getCurrentPosition(sendPositionToFirebase, () => {}, { enableHighAccuracy: true, timeout: 3000, maximumAge: 0 }); }, 1500);
+            } else {
+                if (gpsWatchId) navigator.geolocation.clearWatch(gpsWatchId); if (gpsIntervalId) clearInterval(gpsIntervalId);
+                if (wakeLock) { wakeLock.release().then(() => { wakeLock = null; }); }
+                btnGps.innerText = "📡 開啟手機 GPS 串流"; btnGps.classList.remove("active"); isGpsActive = false; gpsStatus.innerText = "已停止傳送。";
+            }
+        };
+
+        function listenToHostState() {
+            // 1. 監聽主機狀態
+            unsubscribeState = onValue(ref(window.fbDb, 'buses/' + currentBusId + '/state'), (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    document.getElementById('st-route').innerText = data.routeName || '未載入';
+                    document.getElementById('st-dir').innerText = data.direction === 'outbound' ? '去程' : '返程';
+                    const curStopName = data.currentStop || '準備中...';
+                    document.getElementById('st-stop').innerText = curStopName;
+                    
+                    const pidsBtn = document.getElementById('btn-remote-pids');
+                    if (data.isPidsRunning) { pidsBtn.innerText = "🛑 停止公車看板"; pidsBtn.classList.add('active'); } 
+                    else { pidsBtn.innerText = "🚌 啟動公車看板"; pidsBtn.classList.remove('active'); }
+
+                    if (data.routeList && Array.isArray(data.routeList)) {
+                        const select = document.getElementById('route-select'); 
+                        const currentVal = select.value; 
+                        select.innerHTML = '<option value="">-- 請選擇主機上的路線 --</option>';
+                        data.routeList.forEach(r => { 
+                            const opt = document.createElement('option'); opt.value = r.id; opt.innerText = r.name; 
+                            select.appendChild(opt); 
+                        });
+                        if(currentVal) select.value = currentVal;
+                    }
+
+                    checkStopBellStatus(curStopName);
+                }
+            });
+
+            // 2. 監聽預約下車清單
+            if (unsubscribeReqStops) unsubscribeReqStops();
+            unsubscribeReqStops = onValue(ref(window.fbDb, 'buses/' + currentBusId + '/requested_stops'), (snap) => {
+                window._currentRequestedStops.clear();
+                if (snap.exists()) {
+                    const data = snap.val();
+                    for(let stopName in data) {
+                        if(data[stopName] === true) window._currentRequestedStops.add(stopName);
+                    }
+                }
+                const curStopName = document.getElementById('st-stop').innerText;
+                checkStopBellStatus(curStopName);
+            });
+        }
+
+        function checkStopBellStatus(currentStopName) {
+            const panel = document.getElementById('status-panel');
+            if (!panel) return;
+
+            const nameToVerify = currentStopName.trim();
+            if (window._currentRequestedStops && (window._currentRequestedStops.has(currentStopName) || window._currentRequestedStops.has(nameToVerify))) {
+                if (!panel.classList.contains('stop-requested')) {
+                    panel.classList.add('stop-requested');
+                    try { if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]); } catch(e){}
+                }
+            } else {
+                panel.classList.remove('stop-requested');
+            }
+        }
+
+        let lastAudioId = null; let isInitialLoad = true;
+        function listenToAudioTrigger() {
+            isInitialLoad = true;
+            unsubscribeAudio = onValue(ref(window.fbDb, 'buses/' + currentBusId + '/audio_trigger'), (snap) => {
+                const data = snap.val();
+                if (!data) return;
+                if (isInitialLoad) { isInitialLoad = false; lastAudioId = data.id; return; }
+                if (data.id !== lastAudioId) {
+                    lastAudioId = data.id;
+                    window.showToast(`📡 收到訊號：${data.zh}`);
+                    triggerRemoteAnnouncement(data);
+                }
+            });
+        }
+
+        function findPidsAudio(category, baseName) { if (!window.pidsAssets[category]) return null; const keys = Object.keys(window.pidsAssets[category]); for (let i = 0; i < keys.length; i++) { if (keys[i].replace(/\.[^/.]+$/, "").trim() === baseName.trim()) { return window.pidsAssets[category][keys[i]]; } } return null; }
+        function getPrefixSuffix(lang, type) { 
+            let url = findPidsAudio(lang, type); if (url) return { type: 'audio', src: url }; 
+            let lName = ''; if (lang === 'zh') lName = '中文'; else if (lang === 'en') lName = '英文'; else if (lang === 'tw') lName = '台語'; else if (lang === 'hk') lName = '客語'; else if (lang === 'yue') lName = '粵語'; 
+            if (lName) { 
+                url = findPidsAudio('common', `${type}(${lName})`); if (url) return { type: 'audio', src: url }; 
+                url = findPidsAudio('common', `${type}${lName}`); if (url) return { type: 'audio', src: url }; 
+            } return null; 
+        }
+        function pushQA(lang, phrase, idx, isGlobalFallback = false) {
+            let a = getPrefixSuffix(lang, phrase); 
+            if(a) { pidsPlayQueue.push(a); return; }
+            if(idx === 0 || isGlobalFallback) {
+                let g = findPidsAudio('common', phrase); 
+                if(g) { pidsPlayQueue.push({type:'audio', src:g}); } 
+                else { pidsPlayQueue.push({type:'tts', text: phrase, lang: lang==='en'?'en-US':'zh-TW'}); }
+            }
+        }
+
+        function triggerRemoteAnnouncement(data) {
+            pidsAnnounceId++; const myId = pidsAnnounceId;
+            
+            if (window.speechSynthesis) window.speechSynthesis.cancel();
+            try { globalPlayer.pause(); globalPlayer.onended = null; globalPlayer.onerror = null; } catch(e){}
+            pidsPlayQueue = []; window.pidsIsPlaying = false;
+
+            const playMode = globalStationSettings.mode || 'all';
+            if (playMode === 'next_only' && data.mode === 'arr') return;
+            if (playMode === 'arr_only' && data.mode === 'next') return;
+
+            const format = globalStationSettings.format || 'auto';
+            const finalOrder = [...new Set([globalStationSettings.l1, globalStationSettings.l2, globalStationSettings.l3, globalStationSettings.l4])].filter(l => l !== 'none' && l !== undefined);
+            
+            const isTerm = data.isTerm; const sNameZH = data.zh; const sNameEN = data.en;
+            const hasTerm = !!findPidsAudio('common', '終點站') || finalOrder.some(l => getPrefixSuffix(l, '終點站'));
+            const hasTermArr = !!findPidsAudio('common', '終點站到了') || finalOrder.some(l => getPrefixSuffix(l, '終點站到了'));
+
+            const addLangToQueue = (lang) => {
+                let url = null, ttsText = null, ttsLang = 'zh-TW';
+                if (lang === 'zh') { url = findPidsAudio('zh', sNameZH); ttsText = sNameZH; } 
+                else if (lang === 'en') { url = findPidsAudio('en', sNameZH); ttsText = sNameEN; ttsLang = 'en-US'; } 
+                else if (lang === 'tw') url = findPidsAudio('tw', sNameZH); 
+                else if (lang === 'hk') url = findPidsAudio('hk', sNameZH); 
+                else if (lang === 'yue') { url = findPidsAudio('yue', sNameZH); ttsText = sNameZH; ttsLang = 'zh-HK'; }
+                
+                if (url) pidsPlayQueue.push({ type: 'audio', src: url }); 
+                else if (ttsText) pidsPlayQueue.push({ type: 'tts', text: ttsText, lang: ttsLang });
+            };
+
+            if (data.mode === 'next') {
+                finalOrder.forEach((lang, index) => { pushQA(lang, '下一站', index); if(isTerm && hasTerm) pushQA(lang, '終點站', index); addLangToQueue(lang); });
+            } else {
+                let useSuffix = (format === 'suffix') || (format === 'auto' && !!findPidsAudio('common', '到了'));
+                finalOrder.forEach((lang, index) => {
+                    if (isTerm && hasTermArr) { pushQA(lang, '終點站到了', index); addLangToQueue(lang); }
+                    else if (isTerm && hasTerm) { if (useSuffix) { pushQA(lang, '終點站', index); addLangToQueue(lang); pushQA(lang, '到了', index); } else { pushQA(lang, '即將抵達', index); pushQA(lang, '終點站', index); addLangToQueue(lang); } }
+                    else if (useSuffix) { addLangToQueue(lang); pushQA(lang, '到了', index); }
+                    else { pushQA(lang, '即將抵達', index); addLangToQueue(lang); }
+                });
+            }
+            processPidsQueue(myId);
+        }
+
+        window._currentTTS = null; 
+
+        async function processPidsQueue(announceId) {
+            if (announceId !== pidsAnnounceId) return; 
+            if (pidsPlayQueue.length === 0) { window.pidsIsPlaying = false; return; }
+            window.pidsIsPlaying = true;
+            
+            const item = pidsPlayQueue.shift();
+
+            if (item.type === 'audio') {
+                globalPlayer.src = item.src;
+                globalPlayer.volume = window._globalVolume;
+                
+                globalPlayer.onended = () => { globalPlayer.onended = null; processPidsQueue(announceId); };
+                globalPlayer.onerror = () => { globalPlayer.onerror = null; processPidsQueue(announceId); };
+                
+                try { await globalPlayer.play(); } catch(e) { processPidsQueue(announceId); }
+            } else if (item.type === 'tts') {
+                if (window.speechSynthesis) {
+                    const u = new SpeechSynthesisUtterance(item.text);
+                    window._currentTTS = u; 
+                    u.lang = item.lang || 'zh-TW'; u.rate = 0.9; u.volume = window._globalVolume;
+                    
+                    u.onend = () => { window._currentTTS = null; processPidsQueue(announceId); };
+                    u.onerror = () => { window._currentTTS = null; processPidsQueue(announceId); };
+                    
+                    setTimeout(() => {
+                        if (announceId === pidsAnnounceId) {
+                            window.speechSynthesis.speak(u);
+                            setTimeout(() => {
+                                if (window._currentTTS === u) { window._currentTTS = null; processPidsQueue(announceId); }
+                            }, Math.max(4000, item.text.length * 400));
+                        }
+                    }, 50);
+                } else { processPidsQueue(announceId); }
+            }
+        }
+
+        window.manualSyncGitHub = function() {
+            const urlInput = document.getElementById('gh-repo-url').value.trim(); 
+            const tokenInput = document.getElementById('gh-token').value.trim();
+            if (!urlInput || !tokenInput) { alert("請填寫專案連結與金鑰！"); return; }
+            const shouldClear = confirm("是否清空目前所有音檔？\n\n(按「確定」將清空舊檔並重新下載)\n(按「取消」將直接覆蓋/新增入現有資料庫)");
+            window.syncGitHubAudio(urlInput, tokenInput, shouldClear);
+        };
+
+        window.syncGitHubAudio = async function(urlInput, tokenInput, clearOld = true) {
+            const match = urlInput.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+            if (!match) { alert("專案連結格式錯誤！"); return; }
+            const owner = match[1]; const repo = match[2].replace('.git', '');
+            
+            const overlay = document.getElementById('loading-overlay'); 
+            overlay.innerHTML = "☁️ 正在同步語音包...<br><span style='font-size:14px; color:#555;'>請稍候，下載期間請勿關閉畫面</span>";
+            overlay.style.display = 'flex';
+            
+            try {
+                const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/audio.zip`;
+                const fileRes = await fetch(apiUrl, { headers: { 'Authorization': `token ${tokenInput}` } });
+                if (!fileRes.ok) throw new Error("找不到檔案");
+                const fileData = await fileRes.json();
+                const zipRes = await fetch(fileData.url, { headers: { 'Authorization': `token ${tokenInput}`, 'Accept': 'application/vnd.github.v3.raw' } });
+                const zipBlob = await zipRes.blob(); let zip = await JSZip.loadAsync(zipBlob);
+                const folderMap = { '罐頭': 'common', '中文': 'zh', '英文': 'en', '台語': 'tw', '客語': 'hk' };
+                
+                if (clearOld) {
+                    await indexedDB.deleteDatabase("Remote_PIDS_Audio");
+                    window.pidsAssets = { common: {}, zh: {}, en: {}, tw: {}, hk: {}, yue: {} };
+                }
+
+                let count = 0;
+                for (let path of Object.keys(zip.files)) {
+                    if (!zip.files[path].dir) {
+                        let fileName = path.split('/').pop(); let category = null;
+                        for (let [zh, code] of Object.entries(folderMap)) { if (path.includes(zh)) category = code; }
+                        if (category && fileName.match(/\.(mp3|wav|m4a)$/i)) {
+                            let b = await zip.files[path].async("blob");
+                            window.pidsAssets[category][fileName] = URL.createObjectURL(b);
+                            await savePidsAudioToDB(category, fileName, b); count++;
+                        }
+                    }
+                }
+                
+                localStorage.setItem('remote_github_url', urlInput); localStorage.setItem('remote_github_token', tokenInput);
+                alert(`✅ 語音包同步完成！共匯入 ${count} 個音檔。`);
+                document.getElementById('audio-modal').style.display='none';
+            } catch(e) { alert("語音包同步失敗: " + e.message); } 
+            finally { overlay.style.display = 'none'; overlay.innerHTML = "處理中，請稍候..."; }
+        };
+
+        window.sendCommand = (type) => {
+            if (!isConnected) return window.showToast("⚠️ 請先連線上線！");
+            
+            if (type === 'TOGGLE_PIDS') {
+                const pidsBtn = document.getElementById('btn-remote-pids');
+                if (pidsBtn.classList.contains('active')) {
+                    pidsBtn.innerText = "🚌 啟動公車看板"; pidsBtn.classList.remove('active');
+                } else {
+                    pidsBtn.innerText = "🛑 停止公車看板"; pidsBtn.classList.add('active');
+                }
+            }
+            set(ref(window.fbDb, 'buses/'+currentBusId+'/command'), { action: type, timestamp: Date.now() }).catch(e=>{});
+            closeDrawer(); 
+        };
+
+        window.confirmAndLoadRoute = (dir) => {
+            if (!isConnected) return window.showToast("⚠️ 請先連線上線！");
+            const select = document.getElementById('route-select'); const rid = select.value;
+            if(!rid) return alert("請選擇路線");
+            const routeName = select.options[select.selectedIndex].text;
+            const dirName = dir === 'outbound' ? '🔵 去程' : '⚪ 返程';
+            const wantStartPids = confirm(`即將載入「${routeName}」 ${dirName}\n\n是否要一併【啟動公車看板】？\n\n(按「確定」= 載入並自動啟動)`);
+            set(ref(window.fbDb, 'buses/'+currentBusId+'/command'), { action: 'LOAD_ROUTE_DIR', payload: { id: rid, dir: dir }, timestamp: Date.now() }).catch(e=>{});
+            if (wantStartPids) {
+                window.showToast("⏳ 路線載入中，即將啟動看板...");
+                setTimeout(() => { 
+                    set(ref(window.fbDb, 'buses/'+currentBusId+'/command'), { action: 'TOGGLE_PIDS', timestamp: Date.now() }).catch(e=>{}); 
+                    window.showToast("✅ 路線已載入 (已啟動看板)"); 
+                }, 800);
+            } else { window.showToast("✅ 路線已載入 (未啟動看板)"); }
+        };
+
+        window.sendVolume = (v) => { 
+            window._globalVolume = v/100; 
+            if (!isConnected) return;
+            set(ref(window.fbDb, 'buses/'+currentBusId+'/command'), { action: 'SET_VOLUME', payload: v/100, timestamp: Date.now() }).catch(e=>{}); 
+        };
+
+        const PIDS_DB_NAME = "Remote_PIDS_Audio"; const STORE = "audio_assets";
+        function openPidsDB() { return new Promise((res) => { const r = indexedDB.open(PIDS_DB_NAME, 1); r.onupgradeneeded = e => e.target.result.createObjectStore(STORE); r.onsuccess = e => res(e.target.result); }); }
+        async function savePidsAudioToDB(cat, fn, b) { const db = await openPidsDB(); db.transaction(STORE, "readwrite").objectStore(STORE).put(b, `${cat}___${fn}`); }
+        async function loadAllPidsAudioFromDB() { const db = await openPidsDB(); const store = db.transaction(STORE, "readonly").objectStore(STORE); store.openCursor().onsuccess = e => { const c = e.target.result; if(c){ const [cat, fn] = c.key.split('___'); if(window.pidsAssets[cat]) window.pidsAssets[cat][fn] = URL.createObjectURL(c.value); c.continue(); } }; }
+    </script>
+</body>
+</html>
