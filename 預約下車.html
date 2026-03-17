@@ -47,53 +47,49 @@
     const lockDesc = document.getElementById('lock-desc');
 
     // ==========================================
-    // 🛡️ 駭客防禦 1：網址隱形斗篷 (過河拆橋)
+    // 🛡️ 駭客防禦 1：檢查合法憑證
     // ==========================================
     const urlParams = new URLSearchParams(window.location.search);
-    const busIdFromUrl = urlParams.get('bus');
-    const isAdmin = urlParams.get('admin') === 'true'; 
+    let busId = urlParams.get('bus'); 
+    const isAdminMode = urlParams.get('admin') === 'true'; 
 
-    // 如果網址上有參數，趕快存進 SessionStorage，然後洗掉網址！
-    if (busIdFromUrl) {
-        sessionStorage.setItem('current_bus_id', busIdFromUrl);
-        if (isAdmin) sessionStorage.setItem('is_admin_mode', 'true');
-        
-        // 魔法發動：把網址列的參數洗掉，並覆蓋歷史紀錄
-        if (window.history && window.history.replaceState) {
-            const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-            window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+    const savedBusId = localStorage.getItem('my_active_bus_id');
+    const savedLockTime = localStorage.getItem('my_lock_expire');
+
+    // 若網址沒有車號，檢查是否有「未過期的進行中預約」
+    if (!busId) {
+        if (savedBusId && savedLockTime && Date.now() < parseInt(savedLockTime)) {
+            busId = savedBusId; // 持有通行證，恢復連線
         }
     }
 
-    // 接下來的程式邏輯，全部改從 SessionStorage 拿車號
-    const busId = sessionStorage.getItem('current_bus_id');
-    const isAdminMode = sessionStorage.getItem('is_admin_mode') === 'true';
-
-    // ==========================================
-    // 🛡️ 駭客防禦 2：實體 QR Code 驗證 (阻擋歷史紀錄偷客)
-    // ==========================================
     if (!busId) {
         document.getElementById('bus-title').innerText = "連線失敗";
         lockTitle.innerText = "🚫 連結無效";
-        lockDesc.innerHTML = "請直接掃描公車椅背上的 QR Code。<br><br><span style='font-size:14px;color:#888;'>(為保護系統，重新整理或從歷史紀錄進入將自動失效)</span>";
+        lockDesc.innerHTML = "請直接掃描公車椅背上的 QR Code。<br><br><span style='font-size:14px;color:#888;'>(為保護系統，離開公車後連結將自動失效)</span>";
         overlay.style.display = 'flex';
         throw new Error("非法進入，停止執行"); 
+    }
+
+    // ==========================================
+    // 🛡️ 駭客防禦 2：網址隱形斗篷 (過河拆橋)
+    // ==========================================
+    if (window.history && window.history.replaceState && urlParams.has('bus')) {
+        const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+        window.history.replaceState(null, document.title, cleanUrl);
     }
 
     document.getElementById('bus-title').innerText = `目前車號：${busId} ${isAdminMode ? '(管理模式)' : ''}`;
 
     // ==========================================
-    // 🛡️ 駭客防禦 3：15分鐘 / 到站智慧解鎖
+    // 🛡️ 駭客防禦 3：檢查是否處於預約鎖定狀態
     // ==========================================
-    const deviceLockKey = 'locked_bus_' + busId;
-    const deviceStopKey = 'locked_stop_' + busId;
-    
     if (!isAdminMode) {
-        const lockTime = localStorage.getItem(deviceLockKey);
+        const lockTime = localStorage.getItem('my_lock_expire');
         if (lockTime && Date.now() < parseInt(lockTime)) {
             lockTitle.innerText = "⏳ 預約處理中";
             lockTitle.style.color = "#f39c12";
-            lockDesc.innerHTML = `您已成功預約下車：<b>${localStorage.getItem(deviceStopKey) || ''}</b><br><br>請留意車廂螢幕提示。<br><br><span style='font-size:14px;color:#888;'>(同一裝置將於到站後，或 15 分鐘後自動解鎖)</span>`;
+            lockDesc.innerHTML = `您已成功預約下車：<b>${localStorage.getItem('my_locked_stop') || ''}</b><br><br>請留意車廂螢幕提示。<br><br><span style='font-size:14px;color:#888;'>(同一裝置將於到站後自動解除綁定)</span>`;
             overlay.style.display = 'flex';
         }
     }
@@ -128,9 +124,9 @@
         // 更新進度條顏色與長度
         let percentage = (timeLeft / TOTAL_SECONDS) * 100;
         progressBar.style.width = percentage + '%';
-        if (percentage > 50) progressBar.style.background = '#27ae60'; // 綠色 (充裕)
-        else if (percentage > 20) progressBar.style.background = '#f1c40f'; // 黃色 (警告)
-        else progressBar.style.background = '#e74c3c'; // 紅色 (危險)
+        if (percentage > 50) progressBar.style.background = '#27ae60'; // 綠色
+        else if (percentage > 20) progressBar.style.background = '#f1c40f'; // 黃色
+        else progressBar.style.background = '#e74c3c'; // 紅色
 
     }, 1000);
 
@@ -151,10 +147,10 @@
         let currentDirText = state.direction === 'outbound' ? '去程' : '返程';
         let oppDirText = state.direction === 'outbound' ? '返程' : '去程';
 
-        // 🌟 智慧解鎖判斷
+        // 🌟 智慧解鎖與銷毀通行證
         if (!isAdminMode) {
-            let myLockedStop = localStorage.getItem(deviceStopKey);
-            let myLockTime = localStorage.getItem(deviceLockKey);
+            let myLockedStop = localStorage.getItem('my_locked_stop');
+            let myLockTime = localStorage.getItem('my_lock_expire');
 
             if (myLockedStop && myLockTime) {
                 let isArrivedOrPassed = false;
@@ -164,13 +160,15 @@
                 let isExpired = Date.now() > parseInt(myLockTime);
 
                 if (isArrivedOrPassed || isExpired) {
-                    localStorage.removeItem(deviceLockKey);
-                    localStorage.removeItem(deviceStopKey);
+                    // 💣 銷毀通行證：一過站，歷史紀錄的網址就會立刻失效！
+                    localStorage.removeItem('my_lock_expire');
+                    localStorage.removeItem('my_locked_stop');
+                    localStorage.removeItem('my_active_bus_id');
                     
                     if (overlay.style.display === 'flex' && (lockTitle.innerText.includes("處理中") || lockTitle.innerText.includes("預約已送出"))) {
-                        lockTitle.innerText = "📍 抵達預約站 / 已解鎖";
+                        lockTitle.innerText = "📍 抵達預約站點";
                         lockTitle.style.color = "#0078d4";
-                        lockDesc.innerHTML = "公車已抵達預約站點，或鎖定解除。<br><br>若需預約其他站點，請重新掃描 QR Code。";
+                        lockDesc.innerHTML = "公車已抵達預約站點，任務結束。<br><br>若需預約其他站點，請重新掃描 QR Code。";
                     }
                 }
             }
@@ -248,8 +246,10 @@
                 overlay.style.display = 'flex';
                 
                 if (!isAdminMode) {
-                    localStorage.setItem(deviceLockKey, Date.now() + 15 * 60 * 1000); 
-                    localStorage.setItem(deviceStopKey, stopName); 
+                    // 🎟️ 發放臨時通行證
+                    localStorage.setItem('my_lock_expire', Date.now() + 15 * 60 * 1000); 
+                    localStorage.setItem('my_locked_stop', stopName); 
+                    localStorage.setItem('my_active_bus_id', busId); 
                 }
             }).catch(e => alert("網路錯誤，請稍後再試"));
         }
