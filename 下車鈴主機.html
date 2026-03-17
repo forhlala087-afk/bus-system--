@@ -1102,6 +1102,14 @@
                 s.dynamicInnerEntered = false; s.bgDynamicInnerEntered = false; s.entryLat = null; s.entryLon = null; s.enterTime = 0; s.arrAnnounced = false;
             }); 
             currentMaxIndex = -1; lastGlobalExitTime = Date.now(); lastStationActivityTime = 0; window._lastValidLat = null; window._lastValidLon = null; window._currentHeading = null;
+            
+            // 🌟 終極洗白保險：只要換路線或重啟，把雲端下車鈴全部砍掉！
+            if (window._isHostConnected && typeof fbDb !== 'undefined' && window._currentBusId) {
+                if (typeof fbSetRef === 'function' && typeof fbRef === 'function') {
+                    fbSetRef(fbRef(fbDb, `buses/${window._currentBusId}/requested_stops`), null);
+                }
+            }
+            if (window._requestedStops) window._requestedStops.clear();
         }
 
         window.autoSetCheckpoints = function() {
