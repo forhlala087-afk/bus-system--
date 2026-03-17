@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>LINE 智慧預約下車</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+    /* ... 保持原本的 CSS 樣式不變 ... */
+    body { font-family: -apple-system, sans-serif; text-align: center; padding: 15px; background: #f4f6f9; }
+    .stop-btn { display: block; width: 100%; padding: 16px; margin: 10px 0; background: #fff; border: 2px solid #ddd; border-radius: 12px; font-size: 18px; font-weight: bold; }
+    .disabled-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(255,255,255,0.98); z-index: 1000; flex-direction: column; justify-content: center; align-items: center; padding: 20px; text-align: center; }
+</style>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+    import { getDatabase, ref, onValue, set, get, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyDjxGWY6hN4yx-v2pa6I5UItxy_PNaOPK8",
+        databaseURL: "https://bus-remote-control-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "bus-remote-control"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const liffId = "2009509232-blZgSdfi"; // 你的專屬 ID
+    const overlay = document.getElementById('timeout-overlay');
+    const lockTitle = document.getElementById('lock-title');
+    const lockDesc = document.getElementById('lock-desc');
+
+    async function initSystem() {
+        try {
+            // 1. 初始化 LINE LIFF
+            await liff.init({ liffId: liffId });
+            
+            // 2. 強制登入 (如果是在無痕或外部瀏覽器打開，會被踢去登入)
+            if (!liff.isLoggedIn()) {
+                liff.login();
+                return;
+            }
+
+            // 3. 抓取乘客的唯一 LINE UID
+            const profile = await liff.getProfile();
+            const userId = profile.userId; 
+            const userName = profile.displayName;
+
+            // 4. 解析網址車號 (?bus=9527)
+            const urlParams = new URLSearchParams(window.location.search);
+            const busId = urlParams.get('bus') || "9527"; // 預設測試用
+            document.getElementById('bus-title').innerText = `目前車號：${busId} (乘客：${userName})`;
+
+            // 5. 💀 雲端防護：檢查 Firebase 上的黑名單 (這招無痕模式必死)
+            const today = new Date().toLocaleDateString().replace(/\//g, '-');
+            const userRef = ref(db, `usage_stats/${busId}/${today}/${userId}`);
+            
+            const snapshot = await get(userRef);
+            let count = snapshot.exists() ? snapshot.val().count : 0;
+
+            if (count >= 5) {
+                showLock("🚫 預約次數超限", `嘿 ${userName}，您今天已預約過 5 次這台車了。<br><br>為防惡意操作，請直接按車上鈴！`);
+                return;
+            }
+
+            // 6. 監聽公車路線資料 (保持原本邏輯)
+            startBusListener(busId, userId, count);
+
+        } catch (err) {
+            console.error("系統錯誤:", err);
+            showLock("⚠️ 載入失敗", "請確保從 LINE 內開啟網頁。");
+        }
+    }
+
+    function startBusListener(busId, userId, currentCount) {
+        onValue(ref(db, `buses/${busId}/state`), (snap) => {
+            const container = document.getElementById('stop-list');
+            if (!snap.exists()) { container.innerHTML = "車輛連線中..."; return; }
+            
+            const upcoming = snap.val().upcomingStops || [];
+            container.innerHTML = "";
+            upcoming.forEach(stop => {
+                let btn = document.createElement('button');
+                btn.className = 'stop-btn';
+                btn.innerText = `📍 ${stop}`;
+                btn.onclick = () => requestStop(busId, stop, userId, currentCount);
+                container.appendChild(btn);
+            });
+        });
+    }
+
+    async function requestStop(busId, stopName, userId, currentCount) {
+        if (!confirm(`確定預約「${stopName}」下車嗎？`)) return;
+
+        // 🟢 核心：寫入預約 + 更新雲端計數器
+        const today = new Date().toLocaleDateString().replace(/\//g, '-');
+        const userRef = ref(db, `usage_stats/${busId}/${today}/${userId}/count`);
+
+        try {
+            // 先發送預約訊號
+            await set(ref(db, `buses/${busId}/requested_stops/${stopName}`), true);
+            
+            // 更新雲端次數 (不論他怎麼清除 Cache，這筆帳都算在他 LINE ID 頭上)
+            await set(userRef, currentCount + 1);
+
+            showLock("✅ 預約成功", `已為您預約 ${stopName} 下車！<br>今日剩餘次數：${4 - currentCount}`);
+        } catch (e) {
+            alert("發送失敗，請再試一次");
+        }
+    }
+
+    function showLock(title, desc) {
+        lockTitle.innerText = title;
+        lockDesc.innerHTML = desc;
+        overlay.style.display = 'flex';
+    }
+
+    initSystem();
+</script>
+</head>
+<body>
+    <h2>🚌 智慧公車預約系統 (LINE 版)</h2>
+    <p id="bus-title">正在驗證身分...</p>
+    <div id="stop-list"></div>
+    <div id="timeout-overlay" class="disabled-overlay">
+        <h1 id="lock-title"></h1>
+        <p id="lock-desc"></p>
+    </div>
+</body>
+</html>
