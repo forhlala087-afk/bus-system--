@@ -22,25 +22,25 @@
     .status-panel span { color: #f1c40f; font-size: 18px; }
     
     /* ========================================= */
-    /* 🚨 預約下車：紫紅呼吸燈特效 */
+    /* 🚨 預約下車：紫紅呼吸燈特效 (暴力點亮版) */
     /* ========================================= */
     .status-panel.stop-requested {
-        background: #8e44ad; 
-        box-shadow: 0 0 15px #9b59b6, inset 0 0 20px rgba(0,0,0,0.5);
-        animation: breathePurple 1.5s infinite alternate;
-        border: 2px solid #e056fd;
+        background-color: #8e44ad !important; 
+        box-shadow: 0 0 15px #9b59b6, inset 0 0 20px rgba(0,0,0,0.5) !important;
+        animation: breathePurple 1s infinite alternate !important;
+        border: 2px solid #e056fd !important;
     }
     .status-panel.stop-requested span {
-        color: #fff;
-        text-shadow: 0 0 10px rgba(255,255,255,0.8);
+        color: #fff !important;
+        text-shadow: 0 0 10px rgba(255,255,255,0.8) !important;
     }
     
     @keyframes breathePurple {
-        0% { background: #8e44ad; box-shadow: 0 0 15px #9b59b6; }
-        100% { background: #e74c3c; box-shadow: 0 0 30px #ff7675; }
+        0% { background-color: #8e44ad; box-shadow: 0 0 15px #9b59b6; }
+        100% { background-color: #e74c3c; box-shadow: 0 0 30px #ff7675; }
     }
     
-    /* 🔔 新增的下車鈴提示文字區塊 */
+    /* 🔔 下車鈴提示文字區塊 */
     .bell-alert-text {
         display: none;
         font-size: 20px;
@@ -54,7 +54,7 @@
         animation: flashText 1s infinite;
     }
     .status-panel.stop-requested .bell-alert-text {
-        display: block; 
+        display: block !important; 
     }
     @keyframes flashText {
         0%, 100% { opacity: 1; }
