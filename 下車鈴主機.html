@@ -1807,6 +1807,27 @@
                 let dDist = getDist(window._lastValidLat, window._lastValidLon, lat, lon);
                 if (dDist > 4) { window._currentHeading = getBearing(window._lastValidLat, window._lastValidLon, lat, lon); window._lastValidLat = lat; window._lastValidLon = lon; }
             } else { window._lastValidLat = lat; window._lastValidLon = lon; }
+          // ==========================================
+            // 🛑 智慧下車鈴消燈引擎 (進站踩煞車 或 駛離過站 時才熄滅)
+            // ==========================================
+            if (window.isTrackingPIDS && window._isHostConnected && fbDb && window._requestedStops && window._requestedStops.size > 0) {
+                const curStop = window.stops[window.pidsCurrentIndex];
+                if (curStop && (window._requestedStops.has(curStop.nameZH) || window._requestedStops.has(curStop.nameZH.trim()))) {
+                    // 條件 1：進入核心範圍 (預設 60m 內) 且 車速極低 (小於 1.5 m/s，約時速 5 km/h)
+                    const isStopping = curStop.coreEntered && window._currentSpeed <= 1.5;
+                    // 條件 2：已經判定為駛離該站 (當作備用防呆)
+                    const isPassed = curStop.exitTriggered;
+                    
+                    if (isStopping || isPassed) {
+                        window._requestedStops.delete(curStop.nameZH); // 清除大腦記憶
+                        if (curStop.nameZH.trim() !== curStop.nameZH) window._requestedStops.delete(curStop.nameZH.trim());
+                        
+                        // 清除雲端紀錄，遙控器的燈就會在這一瞬間「熄滅」！
+                        fbSetRef(fbRef(fbDb, `buses/${window._currentBusId}/requested_stops/${curStop.nameZH}`), null); 
+                    }
+                }
+            }
+            // ==========================================
 
             if (window.isTrackingVideo || window.isTrackingPIDS) { 
                 let hasTriggeredAnyGlobal = window.stops.some(s => s.enterTriggered);
@@ -2432,11 +2453,10 @@
                 window.reportFMS(eventMsg, true);
 
                 // 🌟 這裡就是你要的：只要是 mode === 'next' (離站跳下一站)，就立即檢查下車鈴
+                // 🌟 離站跳下一站時，觸發 10 秒影片大秀
                 if (mode === 'next' && window._requestedStops && (window._requestedStops.has(s.nameZH) || window._requestedStops.has(s.nameZH.trim()))) {
                     window.playStopBellShow(s.nameZH); 
-                    if (window._isHostConnected && fbDb && window._currentBusId) {
-                        fbSetRef(fbRef(fbDb, `buses/${window._currentBusId}/requested_stops/${s.nameZH}`), null);
-                    }
+                    // 💡 注意：我們不在這裡清除雲端紀錄了！要把紀錄留著讓遙控器一路亮燈！
                 }
 
                 const bMode = document.getElementById('pids-broadcast-mode') ? document.getElementById('pids-broadcast-mode').value : 'both';
