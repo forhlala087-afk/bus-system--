@@ -42,34 +42,45 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const busId = urlParams.get('bus'); 
-    const isAdmin = urlParams.get('admin') === 'true'; 
-
     const overlay = document.getElementById('timeout-overlay');
     const lockTitle = document.getElementById('lock-title');
     const lockDesc = document.getElementById('lock-desc');
 
     // ==========================================
-    // 🛡️ 駭客防禦 1：網址隱形斗篷
+    // 🛡️ 駭客防禦 1：網址隱形斗篷 (過河拆橋)
     // ==========================================
-    if (window.history && window.history.replaceState && !isAdmin && busId) {
-        const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-        window.history.replaceState({}, document.title, cleanUrl);
+    const urlParams = new URLSearchParams(window.location.search);
+    const busIdFromUrl = urlParams.get('bus');
+    const isAdmin = urlParams.get('admin') === 'true'; 
+
+    // 如果網址上有參數，趕快存進 SessionStorage，然後洗掉網址！
+    if (busIdFromUrl) {
+        sessionStorage.setItem('current_bus_id', busIdFromUrl);
+        if (isAdmin) sessionStorage.setItem('is_admin_mode', 'true');
+        
+        // 魔法發動：把網址列的參數洗掉，並覆蓋歷史紀錄
+        if (window.history && window.history.replaceState) {
+            const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+            window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+        }
     }
 
+    // 接下來的程式邏輯，全部改從 SessionStorage 拿車號
+    const busId = sessionStorage.getItem('current_bus_id');
+    const isAdminMode = sessionStorage.getItem('is_admin_mode') === 'true';
+
     // ==========================================
-    // 🛡️ 駭客防禦 2：實體 QR Code 驗證
+    // 🛡️ 駭客防禦 2：實體 QR Code 驗證 (阻擋歷史紀錄偷客)
     // ==========================================
     if (!busId) {
         document.getElementById('bus-title').innerText = "連線失敗";
         lockTitle.innerText = "🚫 連結無效";
-        lockDesc.innerHTML = "請直接掃描公車椅背上的 QR Code。<br><br><span style='font-size:14px;color:#888;'>(為保護系統，重新整理或分享網址將自動失效)</span>";
+        lockDesc.innerHTML = "請直接掃描公車椅背上的 QR Code。<br><br><span style='font-size:14px;color:#888;'>(為保護系統，重新整理或從歷史紀錄進入將自動失效)</span>";
         overlay.style.display = 'flex';
         throw new Error("非法進入，停止執行"); 
     }
 
-    document.getElementById('bus-title').innerText = `目前車號：${busId} ${isAdmin ? '(管理模式)' : ''}`;
+    document.getElementById('bus-title').innerText = `目前車號：${busId} ${isAdminMode ? '(管理模式)' : ''}`;
 
     // ==========================================
     // 🛡️ 駭客防禦 3：15分鐘 / 到站智慧解鎖
@@ -77,7 +88,7 @@
     const deviceLockKey = 'locked_bus_' + busId;
     const deviceStopKey = 'locked_stop_' + busId;
     
-    if (!isAdmin) {
+    if (!isAdminMode) {
         const lockTime = localStorage.getItem(deviceLockKey);
         if (lockTime && Date.now() < parseInt(lockTime)) {
             lockTitle.innerText = "⏳ 預約處理中";
@@ -141,7 +152,7 @@
         let oppDirText = state.direction === 'outbound' ? '返程' : '去程';
 
         // 🌟 智慧解鎖判斷
-        if (!isAdmin) {
+        if (!isAdminMode) {
             let myLockedStop = localStorage.getItem(deviceStopKey);
             let myLockTime = localStorage.getItem(deviceLockKey);
 
@@ -236,7 +247,7 @@
                 lockDesc.innerHTML = `您已預約 <b>${stopName}</b><br><br>到站前車廂螢幕將自動閃爍提示，請安心休息。<br><br><span style="font-size:14px;color:#888;">(同一裝置已暫時鎖定)</span>`;
                 overlay.style.display = 'flex';
                 
-                if (!isAdmin) {
+                if (!isAdminMode) {
                     localStorage.setItem(deviceLockKey, Date.now() + 15 * 60 * 1000); 
                     localStorage.setItem(deviceStopKey, stopName); 
                 }
