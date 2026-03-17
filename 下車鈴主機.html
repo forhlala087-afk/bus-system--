@@ -10,7 +10,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1a1a1a">
 
-<title>GPS 導航 V168 (可口可樂雙屏版)</title>
+<title>GPS 導航 V168 (下車鈴主機)</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -1292,12 +1292,72 @@
                 let routeIdStr = tdxData[0].RouteID || "";
                 if (Array.isArray(shapeData) && shapeData.length > 0) routeIdStr = shapeData[0].RouteID || routeIdStr;
 
-                loadingText.innerText = `建立 24H 歷史數據庫...`;
+                loadingText.innerText = `下載 S2S 歷史數據...`;
                 const s2sUrl = city === 'InterCity' ? 
                     `https://tdx.transportdata.tw/api/basic/v2/Bus/S2STravelTime/InterCity/${routeIdStr}?%24top=5000&%24format=JSON` : 
                     `https://tdx.transportdata.tw/api/basic/v2/Bus/S2STravelTime/City/${city}/${routeIdStr}?%24top=5000&%24format=JSON`;
                 const s2sResponse = await fetch(s2sUrl, { headers: { 'Authorization': `Bearer ${token}` } });
                 const s2sData = s2sResponse.ok ? await s2sResponse.json() : [];
+
+                // 🌟 1. 先把站牌名單建立起來，當作後續的「篩子」
+                let targetData = tdxData.filter(r => r.SubRouteName && r.SubRouteName.Zh_tw === rNameInput);
+                if (targetData.length === 0) targetData = tdxData;
+
+                let extractedRouteName = window.extractPidsRouteName(rNameInput);
+                let newProj = { 
+                    outbound: { stops: [], routeName: extractedRouteName, destZH: "---", destEN: "---", stopCounter: 0, s2s: {}, shape: [] }, 
+                    inbound: { stops: [], routeName: extractedRouteName, destZH: "---", destEN: "---", stopCounter: 0, s2s: {}, shape: [] } 
+                };
+
+                targetData.forEach(routeObj => {
+                    const dk = (routeObj.Direction === 0 || routeObj.Direction === 2) ? 'outbound' : 'inbound';
+                    if (routeObj.Direction === 2) newProj.isCircular = true;
+                    if (newProj[dk].stops.length > 0) return;
+                    
+                    // 🌟 英文錯字修正字典 (特別針對花蓮 301 及常見拼字錯誤)
+                    const typoDictionary = {
+                        "Sation": "Station", "sation": "Station", "commerical": "Commercial", "Commerical": "Commercial",
+                        "Industial": "Industrial", "Guanghua Lehuoyuan Dist.": "Guanghua LOHAS Creative Park", 
+                        "Shang Shau street": "Shangxiao St.", "Dongdamen Night Market": "Dongdaemun Night Market",
+                        "NTU Hospital Gongguan Branch": "NTU Cancer Center(Keelung Rd.)",
+                        "NTUST": "National Taiwan University of Science and Technology"
+                    };
+
+                    routeObj.Stops.forEach((st, idx) => {
+                        let cleanEnName = st.StopName.En || "";
+                        let cleanZhName = st.StopName.Zh_tw || "";
+                        
+                        // 執行錯字替換
+                        for (let [wrongWord, correctWord] of Object.entries(typoDictionary)) {
+                            let regex = new RegExp(wrongWord, "g");
+                            cleanEnName = cleanEnName.replace(regex, correctWord);
+                        }
+
+                        newProj[dk].stops.push(makeStop(
+                            idx + 1, 
+                            cleanZhName, 
+                            cleanEnName, 
+                            st.StopPosition.PositionLat.toString(), 
+                            st.StopPosition.PositionLon.toString()
+                        ));
+                    });
+                    newProj[dk].stopCounter = routeObj.Stops.length;
+                    if (newProj[dk].stopCounter > 0) { 
+                        newProj[dk].destZH = newProj[dk].stops[newProj[dk].stopCounter-1].nameZH;
+                        newProj[dk].destEN = newProj[dk].stops[newProj[dk].stopCounter-1].nameEN;
+                    }
+                });
+
+                // 抽出純中文站名陣列，作為比對的篩子
+                let outStopNames = newProj.outbound.stops.map(s => s.nameZH);
+                let inStopNames = newProj.inbound.stops.map(s => s.nameZH);
+
+                let safeHasSegment = (arr, f, t) => {
+                    let idxF = arr.indexOf(f);
+                    if (idxF === -1) return false;
+                    let idxT = arr.indexOf(t, idxF); 
+                    return idxT > idxF;
+                };
 
                 let stopIdToName = {};
                 tdxData.forEach(routeObj => {
@@ -1313,23 +1373,16 @@
                     }
                 });
 
-                // 🌟 核心升級：同時建立「分時抽屜」與「平均抽屜」
-                let timeAwareS2sOut = { average: {} }; 
-                let timeAwareS2sIn = { average: {} };
-                let allOutData = {}; // 用來算平均值的暫存區
+                // 🌟 只收集數據，不分小時
+                let allOutData = {}; 
                 let allInData = {};
+                let debugOutCount = 0;
+                let debugInCount = 0;
 
                 if (Array.isArray(s2sData)) {
                     s2sData.forEach(routeDirObj => {
-                        let isOut = (routeDirObj.Direction === 0 || routeDirObj.Direction === 2);
-                        let masterMap = isOut ? timeAwareS2sOut : timeAwareS2sIn;
-                        let avgCollector = isOut ? allOutData : allInData;
-                        
                         if (routeDirObj.TravelTimes) {
                             routeDirObj.TravelTimes.forEach(hourGroup => {
-                                let hour = hourGroup.StartHour.toString();
-                                if (!masterMap[hour]) masterMap[hour] = {};
-
                                 let segments = hourGroup.S2STimes || hourGroup.TravelTimes;
                                 if (segments && Array.isArray(segments)) {
                                     segments.forEach(tt => {
@@ -1340,11 +1393,22 @@
                                         
                                         if (fromName && toName && tt.RunTime > 0) {
                                             let key = fromName + "_" + toName;
-                                            // 存入分時抽屜
-                                            masterMap[hour][key] = Math.round(tt.RunTime);
-                                            // 存入平均值計算區
-                                            if (!avgCollector[key]) avgCollector[key] = [];
-                                            avgCollector[key].push(tt.RunTime);
+                                            let rt = Math.round(tt.RunTime);
+                                            
+                                            // 丟給篩子判定，它屬於去程還是返程？
+                                            let isOutSeg = safeHasSegment(outStopNames, fromName, toName);
+                                            let isInSeg = safeHasSegment(inStopNames, fromName, toName);
+
+                                            if (isOutSeg) {
+                                                if (!allOutData[key]) allOutData[key] = [];
+                                                allOutData[key].push(rt);
+                                                debugOutCount++;
+                                            }
+                                            if (isInSeg) {
+                                                if (!allInData[key]) allInData[key] = [];
+                                                allInData[key].push(rt);
+                                                debugInCount++;
+                                            }
                                         }
                                     });
                                 }
@@ -1353,11 +1417,16 @@
                     });
                 }
 
-                // 🌟 計算全天平均值並存入專屬抽屜
-                for (let key in allOutData) { timeAwareS2sOut.average[key] = Math.round(allOutData[key].reduce((a,b)=>a+b, 0) / allOutData[key].length); }
-                for (let key in allInData) { timeAwareS2sIn.average[key] = Math.round(allInData[key].reduce((a,b)=>a+b, 0) / allInData[key].length); }
+                // 🌟 把龐大的數據壓縮成單純的「扁平平均值」
+                let s2sMapOut = {};
+                let s2sMapIn = {};
+                for (let key in allOutData) { s2sMapOut[key] = Math.round(allOutData[key].reduce((a,b)=>a+b, 0) / allOutData[key].length); }
+                for (let key in allInData) { s2sMapIn[key] = Math.round(allInData[key].reduce((a,b)=>a+b, 0) / allInData[key].length); }
+                
+                newProj.outbound.s2s = s2sMapOut;
+                newProj.inbound.s2s = s2sMapIn;
 
-                // --- 軌跡與站牌渲染邏輯 (維持不變) ---
+                // --- 軌跡渲染邏輯 ---
                 let outShape = []; let inShape = [];
                 if (Array.isArray(shapeData)) {
                     shapeData.forEach(s => {
@@ -1370,24 +1439,8 @@
                         }
                     });
                 }
-
-                let extractedRouteName = window.extractPidsRouteName(rNameInput);
-                let newProj = { 
-                    outbound: { stops: [], routeName: extractedRouteName, destZH: "---", destEN: "---", stopCounter: 0, s2s: timeAwareS2sOut, shape: outShape }, 
-                    inbound: { stops: [], routeName: extractedRouteName, destZH: "---", destEN: "---", stopCounter: 0, s2s: timeAwareS2sIn, shape: inShape } 
-                };
-
-                targetData = tdxData.filter(r => r.SubRouteName && r.SubRouteName.Zh_tw === rNameInput);
-                if (targetData.length === 0) targetData = tdxData;
-                targetData.forEach(routeObj => {
-                    const dk = (routeObj.Direction === 0 || routeObj.Direction === 2) ? 'outbound' : 'inbound';
-                    if (routeObj.Direction === 2) newProj.isCircular = true;
-                    if (newProj[dk].stops.length > 0) return;
-                    routeObj.Stops.forEach((st, idx) => {
-                        newProj[dk].stops.push(makeStop(idx+1, st.StopName.Zh_tw, st.StopName.En || "", st.StopPosition.PositionLat.toString(), st.StopPosition.PositionLon.toString()));
-                    });
-                    newProj[dk].stopCounter = routeObj.Stops.length;
-                });
+                newProj.outbound.shape = outShape;
+                newProj.inbound.shape = inShape;
 
                 window.projectData = newProj;
                 let routes = window.getSavedRoutes();
@@ -1398,7 +1451,7 @@
                 window.saveRoutesMetadata(routes);
                 
                 loadFromProject('outbound'); closeTdxModal();
-                alert(`✅ 匯入完成！\n已建立 24H 數據與全天平均數據庫。`);
+                alert(`✅ 匯入完成！\n\n📊 [智慧分類帽報告]\n去程抽屜收集了: ${debugOutCount} 筆\n返程抽屜收集了: ${debugInCount} 筆\n(已自動壓縮為全天平均值，減輕檔案負擔)`);
             } catch (e) { alert("❌ 錯誤: " + e.message); } finally { loadingOverlay.style.display = 'none'; }
         };
 
@@ -2767,6 +2820,63 @@
         }
         
         function stopPidsCycle() { clearInterval(pidsCycleInterval); pidsCycleInterval = null; }
+      // ==========================================
+        // 🛑 智慧煞車消燈引擎 (5秒靠站判定)
+        // ==========================================
+        window._stopSlowStartTime = 0; // 記錄低速開始的時間戳
+
+        setInterval(() => {
+            // 確保系統有連線，且有人按鈴才執行
+            if (!window._isHostConnected || typeof fbDb === 'undefined' || !window._currentBusId) return;
+            if (!window._requestedStops || window._requestedStops.size === 0) {
+                window._stopSlowStartTime = 0; 
+                return;
+            }
+
+            let isStoppingAtTarget = false;
+
+            // 巡視所有站點，看目前車子是不是停在「有人按鈴」的站牌旁邊
+            if (window.stops && window.stops.length > 0) {
+                window.stops.forEach(s => {
+                    if (window._requestedStops.has(s.nameZH) || window._requestedStops.has(s.nameZH.trim())) {
+                        
+                        // 條件 1：距離小於 30 公尺 (進入核心範圍的一半)
+                        if (s.distance !== undefined && s.distance <= 30) {
+                            
+                            // 條件 2：車速低於 3 km/h (將 m/s 轉換為 km/h)
+                            let speedKmh = (window._currentSpeed || 0) * 3.6;
+                            
+                            if (speedKmh <= 3.0) {
+                                isStoppingAtTarget = true;
+                                
+                                // 開始計時，或是檢查是否已經超過 5 秒 (5000 毫秒)
+                                if (window._stopSlowStartTime === 0) {
+                                    window._stopSlowStartTime = Date.now();
+                                } else if (Date.now() - window._stopSlowStartTime >= 5000) {
+                                    console.log(`[消燈引擎] 在 ${s.nameZH} 停靠超過 5 秒，遙控器熄滅紫紅燈！`);
+                                    
+                                    // 1. 清除主機大腦記憶
+                                    window._requestedStops.delete(s.nameZH);
+                                    if (s.nameZH.trim() !== s.nameZH) window._requestedStops.delete(s.nameZH.trim());
+                                    
+                                    // 2. 清除 Firebase 讓遙控器熄燈
+                                    if (typeof fbSetRef === 'function' && typeof fbRef === 'function') {
+                                        fbSetRef(fbRef(fbDb, `buses/${window._currentBusId}/requested_stops/${s.nameZH}`), null);
+                                    }
+                                    
+                                    window._stopSlowStartTime = 0; // 任務完成，重置計時器
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // 如果車子不在 30m 內，或是突然加速 (起步了)，就打斷計時器重新算
+            if (!isStoppingAtTarget) {
+                window._stopSlowStartTime = 0;
+            }
+        }, 1000); // 每 1 秒鐘背景檢查一次
     </script>
 </body>
 </html>
