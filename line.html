@@ -34,7 +34,16 @@
             // 1. 初始化 LINE LIFF
             await liff.init({ liffId: liffId });
             
-            // 2. 強制登入 (如果是在無痕或外部瀏覽器打開，會被踢去登入)
+            // 🛡️ 新增門禁：檢查是否在 LINE App 內打開
+            if (!liff.isInClient()) {
+                // 如果不是在 LINE 內打開 (例如用 Chrome 或 Safari 直接點網址)
+                showLock("⚠️ 存取受限", 
+                    "為了確保預約安全性，本系統<b>僅限在 LINE App 內使用</b>。<br><br>" +
+                    "請直接掃描公車椅背上的 QR Code，<br>或使用 LINE 官方帳號開啟。");
+                return; // 直接中斷，不執行後續的登入和載入
+            }
+
+            // 2. 強制登入 (在 LINE 內打開就不會跳轉)
             if (!liff.isLoggedIn()) {
                 liff.login();
                 return;
