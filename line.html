@@ -1,138 +1,292 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>LINE 智慧預約下車</title>
-<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<style>
-    /* ... 保持原本的 CSS 樣式不變 ... */
-    body { font-family: -apple-system, sans-serif; text-align: center; padding: 15px; background: #f4f6f9; }
-    .stop-btn { display: block; width: 100%; padding: 16px; margin: 10px 0; background: #fff; border: 2px solid #ddd; border-radius: 12px; font-size: 18px; font-weight: bold; }
-    .disabled-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(255,255,255,0.98); z-index: 1000; flex-direction: column; justify-content: center; align-items: center; padding: 20px; text-align: center; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Smart Transit 預約下車</title>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center; padding: 15px; background: #f4f6f9; color: #333; margin: 0; }
+        h2 { color: #0056b3; margin-bottom: 5px; }
+        .bus-title { font-size: 15px; color: #666; margin-top: 0; margin-bottom: 10px; font-weight: bold; }
+        
+        .timer-container { background: #fff; padding: 12px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 15px; border: 1px solid #eee; }
+        #countdown { font-size: 16px; font-weight: bold; color: #333; margin-bottom: 8px; }
+        #progress-bg { width: 100%; background: #e0e0e0; border-radius: 8px; height: 12px; overflow: hidden; }
+        #progress-bar { height: 100%; width: 100%; background: #27ae60; transition: width 1s linear, background-color 0.5s ease; }
 
-<script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-    import { getDatabase, ref, onValue, set, get, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+        .section-title { font-size: 16px; font-weight: bold; text-align: left; margin: 15px 0 10px 5px; color: #444; border-left: 4px solid #0056b3; padding-left: 8px;}
+        .section-title.return-trip { border-left-color: #e67e22; color: #e67e22; margin-top: 30px;}
 
-    const firebaseConfig = {
-        apiKey: "AIzaSyDjxGWY6hN4yx-v2pa6I5UItxy_PNaOPK8",
-        databaseURL: "https://bus-remote-control-default-rtdb.asia-southeast1.firebasedatabase.app",
-        projectId: "bus-remote-control"
-    };
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+        .stop-btn { display: block; width: 100%; padding: 16px; margin: 8px 0; background: #fff; border: 2px solid #ddd; border-radius: 12px; font-size: 18px; font-weight: bold; color: #333; box-shadow: 0 2px 5px rgba(0,0,0,0.05); cursor: pointer; transition: 0.2s; text-align: left; padding-left: 20px;}
+        .stop-btn:active { background: #e3f2fd; border-color: #0078d4; transform: scale(0.98); }
+        .stop-btn.disabled-btn { background: #e9ecef; color: #999; border-color: #dee2e6; cursor: not-allowed; box-shadow: none; }
+        .stop-btn.opposite-btn { border-color: #ffeaa7; background: #fffdf5; }
 
-    const liffId = "2009509232-blZgSdfi"; // 你的專屬 ID
-    const overlay = document.getElementById('timeout-overlay');
-    const lockTitle = document.getElementById('lock-title');
-    const lockDesc = document.getElementById('lock-desc');
+        .disabled-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(255,255,255,0.98); z-index: 1000; flex-direction: column; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box;}
+        
+        /* 更改預約的連結按鈕樣式 */
+        .change-link { display: inline-block; margin-top: 20px; color: #0078d4; text-decoration: underline; font-size: 18px; cursor: pointer; font-weight: bold; padding: 10px; }
+        .change-link:active { color: #0056b3; }
+        .change-warning { font-size: 14px; color: #e74c3c; margin-top: 5px; font-weight: bold; }
+    </style>
 
-    async function initSystem() {
-        try {
-            // 1. 初始化 LINE LIFF
-            await liff.init({ liffId: liffId });
-            
-            // 🛡️ 新增門禁：檢查是否在 LINE App 內打開
-            if (!liff.isInClient()) {
-                // 如果不是在 LINE 內打開 (例如用 Chrome 或 Safari 直接點網址)
-                showLock("⚠️ 存取受限", 
-                    "為了確保預約安全性，本系統<b>僅限在 LINE App 內使用</b>。<br><br>" +
-                    "請直接掃描公車椅背上的 QR Code，<br>或使用 LINE 官方帳號開啟。");
-                return; // 直接中斷，不執行後續的登入和載入
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getDatabase, ref, onValue, set, get, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDjxGWY6hN4yx-v2pa6I5UItxy_PNaOPK8",
+            databaseURL: "https://bus-remote-control-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "bus-remote-control"
+        };
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        const liffId = "2009509232-blZgSdfi"; 
+        const overlay = document.getElementById('timeout-overlay');
+        const lockTitle = document.getElementById('lock-title');
+        const lockDesc = document.getElementById('lock-desc');
+        const timerEl = document.getElementById('countdown');
+        const progressBar = document.getElementById('progress-bar');
+        const container = document.getElementById('stop-list');
+
+        let currentUser = { uid: "", name: "" };
+        let currentBusId = "";
+        let isAdminMode = false;
+        let expireTime = 0;
+        let globalCount = 0;
+        let busDailyCount = 0;
+        const TOTAL_SECONDS = 600;
+        const todayStr = new Date().toLocaleDateString().replace(/\//g, '-');
+
+        async function init() {
+            try {
+                await liff.init({ liffId: liffId });
+
+                if (!liff.isInClient() && !location.search.includes('admin=true')) {
+                    showOverlay("⚠️ 存取受限", "為了確保安全性，本系統僅限在 LINE App 內使用。<br>請直接掃描公車椅背上的 QR Code。");
+                    return;
+                }
+
+                if (!liff.isLoggedIn()) { liff.login(); return; }
+
+                const profile = await liff.getProfile();
+                currentUser.uid = profile.userId;
+                currentUser.name = profile.displayName;
+
+                const urlParams = new URLSearchParams(window.location.search);
+                currentBusId = urlParams.get('bus') || localStorage.getItem('my_active_bus_id');
+                isAdminMode = urlParams.get('admin') === 'true';
+
+                if (!currentBusId) {
+                    showOverlay("🚫 連結無效", "請重新掃描公車椅背上的 QR Code。");
+                    return;
+                }
+
+                // 💀 雲端限制檢查：讀取全域與單車次數
+                const userStatsRef = ref(db, `usage_stats/${todayStr}/${currentUser.uid}`);
+                const snap = await get(userStatsRef);
+                if (snap.exists()) {
+                    globalCount = snap.val().global_count || 0;
+                    busDailyCount = snap.val().buses?.[currentBusId]?.daily_count || 0;
+                }
+
+                if (!isAdminMode) {
+                    if (globalCount >= 7) {
+                        showOverlay("🚫 次數達上限", "您今天的預約下車功能使用次數已達上限，請按下車鈴下車。");
+                        return;
+                    }
+                    if (busDailyCount >= 4) {
+                        showOverlay("🚫 單車次數達上限", `您今日在這台車 (${currentBusId}) 的預約次數已達上限(4次)。<br>請直接使用實體下車鈴。`);
+                        return;
+                    }
+                }
+
+                document.getElementById('bus-title').innerText = `目前車號：${currentBusId} (乘客：${currentUser.name})`;
+                
+                // 恢復鎖定畫面
+                if (localStorage.getItem('my_locked_stop')) {
+                    showActiveLockScreen(localStorage.getItem('my_locked_stop'));
+                }
+
+                startTimer();
+                startBusListener();
+
+            } catch (err) {
+                showOverlay("⚠️ 系統錯誤", "初始化失敗，請稍後再試。");
             }
-
-            // 2. 強制登入 (在 LINE 內打開就不會跳轉)
-            if (!liff.isLoggedIn()) {
-                liff.login();
-                return;
-            }
-
-            // 3. 抓取乘客的唯一 LINE UID
-            const profile = await liff.getProfile();
-            const userId = profile.userId; 
-            const userName = profile.displayName;
-
-            // 4. 解析網址車號 (?bus=9527)
-            const urlParams = new URLSearchParams(window.location.search);
-            const busId = urlParams.get('bus') || "9527"; // 預設測試用
-            document.getElementById('bus-title').innerText = `目前車號：${busId} (乘客：${userName})`;
-
-            // 5. 💀 雲端防護：檢查 Firebase 上的黑名單 (這招無痕模式必死)
-            const today = new Date().toLocaleDateString().replace(/\//g, '-');
-            const userRef = ref(db, `usage_stats/${busId}/${today}/${userId}`);
-            
-            const snapshot = await get(userRef);
-            let count = snapshot.exists() ? snapshot.val().count : 0;
-
-            if (count >= 5) {
-                showLock("🚫 預約次數超限", `嘿 ${userName}，您今天已預約過 5 次這台車了。<br><br>為防惡意操作，請直接按車上鈴！`);
-                return;
-            }
-
-            // 6. 監聽公車路線資料 (保持原本邏輯)
-            startBusListener(busId, userId, count);
-
-        } catch (err) {
-            console.error("系統錯誤:", err);
-            showLock("⚠️ 載入失敗", "請確保從 LINE 內開啟網頁。");
         }
-    }
 
-    function startBusListener(busId, userId, currentCount) {
-        onValue(ref(db, `buses/${busId}/state`), (snap) => {
-            const container = document.getElementById('stop-list');
-            if (!snap.exists()) { container.innerHTML = "車輛連線中..."; return; }
-            
-            const upcoming = snap.val().upcomingStops || [];
-            container.innerHTML = "";
-            upcoming.forEach(stop => {
-                let btn = document.createElement('button');
-                btn.className = 'stop-btn';
-                btn.innerText = `📍 ${stop}`;
-                btn.onclick = () => requestStop(busId, stop, userId, currentCount);
-                container.appendChild(btn);
+        function startTimer() {
+            expireTime = Date.now() + TOTAL_SECONDS * 1000;
+            const timer = setInterval(() => {
+                let timeLeft = Math.floor((expireTime - Date.now()) / 1000);
+                if (timeLeft <= 0) {
+                    clearInterval(timer);
+                    showOverlay("⏱️ 逾時已失效", "您停留在此頁面過久，為防誤觸已自動鎖定。<br>需再次預約請重新掃描。");
+                    return;
+                }
+                let min = Math.floor(timeLeft / 60); let sec = timeLeft % 60;
+                timerEl.innerText = `⏳ 預約有效時間：${min}:${sec.toString().padStart(2, '0')}`;
+                let percentage = (timeLeft / TOTAL_SECONDS) * 100;
+                progressBar.style.width = percentage + '%';
+                progressBar.style.background = percentage > 50 ? '#27ae60' : (percentage > 20 ? '#f1c40f' : '#e74c3c');
+            }, 1000);
+        }
+
+        function startBusListener() {
+            onValue(ref(db, `buses/${currentBusId}/state`), (snap) => {
+                if (!snap.exists()) { container.innerHTML = "車輛尚未發車"; return; }
+                const state = snap.val();
+                
+                // 檢查是否已抵達預約站點，或路線已更換 (自動解鎖單趟限制)
+                const myLockedStop = localStorage.getItem('my_locked_stop');
+                if (myLockedStop && (state.currentStop === myLockedStop || (!state.upcomingStops?.includes(myLockedStop) && !state.oppositeStops?.includes(myLockedStop)))) {
+                    // 解除單趟鎖定，清空修改紀錄，準備迎接下一趟
+                    localStorage.removeItem('my_locked_stop');
+                    localStorage.removeItem('my_active_bus_id');
+                    localStorage.removeItem('my_change_used');
+                    localStorage.removeItem('is_changing');
+                    if (overlay.style.display === 'flex' && lockTitle.innerText.includes("預約")) {
+                        overlay.style.display = 'none';
+                    }
+                }
+                renderStops(state);
             });
-        });
-    }
-
-    async function requestStop(busId, stopName, userId, currentCount) {
-        if (!confirm(`確定預約「${stopName}」下車嗎？`)) return;
-
-        // 🟢 核心：寫入預約 + 更新雲端計數器
-        const today = new Date().toLocaleDateString().replace(/\//g, '-');
-        const userRef = ref(db, `usage_stats/${busId}/${today}/${userId}/count`);
-
-        try {
-            // 先發送預約訊號
-            await set(ref(db, `buses/${busId}/requested_stops/${stopName}`), true);
-            
-            // 更新雲端次數 (不論他怎麼清除 Cache，這筆帳都算在他 LINE ID 頭上)
-            await set(userRef, currentCount + 1);
-
-            showLock("✅ 預約成功", `已為您預約 ${stopName} 下車！<br>今日剩餘次數：${4 - currentCount}`);
-        } catch (e) {
-            alert("發送失敗，請再試一次");
         }
-    }
 
-    function showLock(title, desc) {
-        lockTitle.innerText = title;
-        lockDesc.innerHTML = desc;
-        overlay.style.display = 'flex';
-    }
+        function renderStops(state) {
+            if (overlay.style.display === 'flex' && !lockTitle.innerText.includes("請選擇新")) return;
+            
+            container.innerHTML = "";
+            const upcoming = state.upcomingStops || [];
+            const opposite = state.oppositeStops || [];
+            const dist = state.nextStopDist || 0;
+            const dirText = state.direction === 'outbound' ? '去程' : '返程';
+            const oppText = state.direction === 'outbound' ? '返程' : '去程';
 
-    initSystem();
-</script>
+            if (upcoming.length > 0) {
+                addTitle(`🔵 目前行駛方向 (${dirText})`, 'section-title');
+                upcoming.forEach((stop, index) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'stop-btn';
+                    if (index === 0) { 
+                        btn.className += ' disabled-btn'; btn.innerText = `🚫 ${stop} (即將抵達)`; 
+                    } else if (index === 1 && dist < 500) {
+                        btn.className += ' disabled-btn'; btn.innerText = `🚫 ${stop} (距離過近)`;
+                    } else {
+                        btn.innerText = `📍 ${stop}`;
+                        btn.onclick = () => handleRequest(stop);
+                    }
+                    container.appendChild(btn);
+                });
+            }
+
+            if (opposite.length > 0) {
+                addTitle(`⚪ 對向預約 (${oppText})`, 'section-title return-trip');
+                opposite.forEach(stop => {
+                    const btn = document.createElement('button');
+                    btn.className = 'stop-btn opposite-btn';
+                    btn.innerText = `📍 ${stop}`;
+                    btn.onclick = () => handleRequest(stop);
+                    container.appendChild(btn);
+                });
+            }
+        }
+
+        async function handleRequest(stopName) {
+            const isChanging = localStorage.getItem('is_changing') === 'true';
+
+            if (isChanging) {
+                if (!confirm(`確定要更改預約為「${stopName}」嗎？\n⚠️ 這是最後一次更改機會！`)) return;
+            } else {
+                if (!confirm(`確定要預約在「${stopName}」下車嗎？`)) return;
+            }
+
+            try {
+                // 送出訊號給公車
+                await set(ref(db, `buses/${currentBusId}/requested_stops/${stopName}`), true);
+                
+                if (!isAdminMode && !isChanging) {
+                    // 只有「全新預約」才扣除雲端次數，更改預約不扣次數
+                    const globalCountRef = ref(db, `usage_stats/${todayStr}/${currentUser.uid}/global_count`);
+                    const busCountRef = ref(db, `usage_stats/${todayStr}/${currentUser.uid}/buses/${currentBusId}/daily_count`);
+                    
+                    await runTransaction(globalCountRef, (current) => (current || 0) + 1);
+                    await runTransaction(busCountRef, (current) => (current || 0) + 1);
+                    globalCount++;
+                    busDailyCount++;
+                }
+
+                // 紀錄單趟狀態
+                localStorage.setItem('my_locked_stop', stopName);
+                localStorage.setItem('my_active_bus_id', currentBusId);
+                
+                if (isChanging) {
+                    localStorage.setItem('my_change_used', 'true');
+                    localStorage.removeItem('is_changing');
+                } else {
+                    localStorage.setItem('my_change_used', 'false');
+                }
+
+                showActiveLockScreen(stopName);
+
+            } catch (e) { alert("網路不穩，發送失敗，請再試一次"); }
+        }
+
+        // 顯示專屬的鎖定與更改畫面
+        window.showActiveLockScreen = function(stopName) {
+            const changeUsed = localStorage.getItem('my_change_used') === 'true';
+            let html = `您已預約 <b>${stopName}</b><br><br>到站前螢幕將自動閃爍提示。`;
+            
+            if (!changeUsed) {
+                html += `<br><a class="change-link" onclick="triggerChange()">🔄 修改預約 (剩餘 1 次機會)</a>`;
+            } else {
+                html += `<br><div class="change-warning">⚠️ 已無更改機會，請留意下車站點</div>`;
+            }
+            showOverlay("✅ 預約已送出", html);
+        }
+
+        // 觸發更改預約
+        window.triggerChange = function() {
+            localStorage.setItem('is_changing', 'true');
+            overlay.style.display = 'none';
+            document.getElementById('bus-title').innerText = "🔄 請選擇新的下車點 (最後修改機會)";
+            document.getElementById('bus-title').style.color = "#e67e22";
+        }
+
+        function addTitle(text, className) {
+            const div = document.createElement('div');
+            div.className = className; div.innerText = text;
+            container.appendChild(div);
+        }
+
+        function showOverlay(title, desc) {
+            lockTitle.innerHTML = title;
+            lockDesc.innerHTML = desc;
+            overlay.style.display = 'flex';
+        }
+
+        init();
+    </script>
 </head>
 <body>
-    <h2>🚌 智慧公車預約系統 (LINE 版)</h2>
-    <p id="bus-title">正在驗證身分...</p>
-    <div id="stop-list"></div>
+    <h2>🚌 智慧公車預約系統</h2>
+    <p class="bus-title" id="bus-title">正在驗證身分...</p>
+    
+    <div class="timer-container">
+        <div id="countdown">⏳ 預約有效時間：10:00</div>
+        <div id="progress-bg"><div id="progress-bar"></div></div>
+    </div>
+    
+    <div id="stop-list">
+        <p>📡 載入最新路線中...</p>
+    </div>
+
     <div id="timeout-overlay" class="disabled-overlay">
-        <h1 id="lock-title"></h1>
-        <p id="lock-desc"></p>
+        <h1 id="lock-title" style="color:#0078d4; margin-bottom:10px;"></h1>
+        <p id="lock-desc" style="color:#555; line-height: 1.5; font-size:18px;"></p>
     </div>
 </body>
 </html>
