@@ -25,7 +25,6 @@
 
         .disabled-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(255,255,255,0.98); z-index: 1000; flex-direction: column; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box;}
         
-        /* 更改預約的連結按鈕樣式 */
         .change-link { display: inline-block; margin-top: 20px; color: #0078d4; text-decoration: underline; font-size: 18px; cursor: pointer; font-weight: bold; padding: 10px; }
         .change-link:active { color: #0056b3; }
         .change-warning { font-size: 14px; color: #e74c3c; margin-top: 5px; font-weight: bold; }
@@ -75,16 +74,27 @@
                 currentUser.uid = profile.userId;
                 currentUser.name = profile.displayName;
 
+                // 🛡️ 防禦 1：網址解析與「過河拆橋」
                 const urlParams = new URLSearchParams(window.location.search);
-                currentBusId = urlParams.get('bus') || localStorage.getItem('my_active_bus_id');
+                let busParam = urlParams.get('bus');
                 isAdminMode = urlParams.get('admin') === 'true';
 
+                // 洗掉歷史紀錄裡的 ?bus= 參數
+                if (window.history && window.history.replaceState && busParam) {
+                    const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+                    window.history.replaceState(null, document.title, cleanUrl);
+                }
+
+                // 判定目前車號 (優先讀取當前網址參數，若無則讀取本機未完成的訂單)
+                currentBusId = busParam || localStorage.getItem('my_active_bus_id');
+
+                // 🚨 如果完全沒有車號 (直接開網頁，且身上沒訂單)，觸發失效畫面
                 if (!currentBusId) {
-                    showOverlay("🚫 連結無效", "請重新掃描公車椅背上的 QR Code。");
+                    showOverlay("🚫 連結失效", "請重新掃描車內 QR Code。<br><br><span style='font-size:14px;color:#888;'>(為保護系統，離開公車後連結將自動失效)</span>");
                     return;
                 }
 
-                // 💀 雲端限制檢查：讀取全域與單車次數
+                // 💀 雲端限制檢查
                 const userStatsRef = ref(db, `usage_stats/${todayStr}/${currentUser.uid}`);
                 const snap = await get(userStatsRef);
                 if (snap.exists()) {
@@ -105,9 +115,11 @@
 
                 document.getElementById('bus-title').innerText = `目前車號：${currentBusId} (乘客：${currentUser.name})`;
                 
-                // 恢復鎖定畫面
-                if (localStorage.getItem('my_locked_stop')) {
-                    showActiveLockScreen(localStorage.getItem('my_locked_stop'));
+                // 恢復鎖定畫面 (如果重新整理網頁時，身上還有未完成的訂單)
+                const lockedStop = localStorage.getItem('my_locked_stop');
+                if (lockedStop) {
+                    localStorage.removeItem('is_changing'); // 防止重新整理卡在修改狀態
+                    showActiveLockScreen(lockedStop);
                 }
 
                 startTimer();
@@ -140,16 +152,26 @@
                 if (!snap.exists()) { container.innerHTML = "車輛尚未發車"; return; }
                 const state = snap.val();
                 
-                // 檢查是否已抵達預約站點，或路線已更換 (自動解鎖單趟限制)
+                // 🛡️ 解鎖機制：確保解鎖的條件是「公車到站」或「路線變更」
                 const myLockedStop = localStorage.getItem('my_locked_stop');
-                if (myLockedStop && (state.currentStop === myLockedStop || (!state.upcomingStops?.includes(myLockedStop) && !state.oppositeStops?.includes(myLockedStop)))) {
-                    // 解除單趟鎖定，清空修改紀錄，準備迎接下一趟
-                    localStorage.removeItem('my_locked_stop');
-                    localStorage.removeItem('my_active_bus_id');
-                    localStorage.removeItem('my_change_used');
-                    localStorage.removeItem('is_changing');
-                    if (overlay.style.display === 'flex' && lockTitle.innerText.includes("預約")) {
-                        overlay.style.display = 'none';
+                const myActiveBus = localStorage.getItem('my_active_bus_id');
+                
+                if (myLockedStop && myActiveBus === currentBusId) {
+                    let isArrivedOrPassed = false;
+                    // 判斷邏輯：現在到了這站，或者未來跟對向的站牌清單裡「已經沒有這站了」
+                    if (state.currentStop === myLockedStop || (!state.upcomingStops?.includes(myLockedStop) && !state.oppositeStops?.includes(myLockedStop))) {
+                        isArrivedOrPassed = true;
+                    }
+
+                    if (isArrivedOrPassed) {
+                        // 徹底解除所有單趟鎖定與修改紀錄
+                        localStorage.removeItem('my_locked_stop');
+                        localStorage.removeItem('my_active_bus_id');
+                        localStorage.removeItem('my_change_used');
+                        localStorage.removeItem('is_changing');
+                        if (overlay.style.display === 'flex' && lockTitle.innerText.includes("預約")) {
+                            overlay.style.display = 'none';
+                        }
                     }
                 }
                 renderStops(state);
@@ -197,6 +219,13 @@
 
         async function handleRequest(stopName) {
             const isChanging = localStorage.getItem('is_changing') === 'true';
+            const changeUsed = localStorage.getItem('my_change_used') === 'true';
+
+            // 🛡️ 程式碼底層雙重鎖定：如果他已經修改過，絕對不允許再發送任何訊號
+            if (changeUsed && !isChanging) {
+                alert("🚫 異常操作：本趟車程已使用過更改機會，無法再次預約！");
+                return;
+            }
 
             if (isChanging) {
                 if (!confirm(`確定要更改預約為「${stopName}」嗎？\n⚠️ 這是最後一次更改機會！`)) return;
@@ -209,7 +238,6 @@
                 await set(ref(db, `buses/${currentBusId}/requested_stops/${stopName}`), true);
                 
                 if (!isAdminMode && !isChanging) {
-                    // 只有「全新預約」才扣除雲端次數，更改預約不扣次數
                     const globalCountRef = ref(db, `usage_stats/${todayStr}/${currentUser.uid}/global_count`);
                     const busCountRef = ref(db, `usage_stats/${todayStr}/${currentUser.uid}/buses/${currentBusId}/daily_count`);
                     
@@ -243,6 +271,7 @@
             if (!changeUsed) {
                 html += `<br><a class="change-link" onclick="triggerChange()">🔄 修改預約 (剩餘 1 次機會)</a>`;
             } else {
+                // 修改過一次後，按鈕消失，顯示紅色警告
                 html += `<br><div class="change-warning">⚠️ 已無更改機會，請留意下車站點</div>`;
             }
             showOverlay("✅ 預約已送出", html);
