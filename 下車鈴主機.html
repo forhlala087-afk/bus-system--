@@ -113,7 +113,7 @@
     #pids-overlay .stop-item-pids.active { opacity: 1; } #pids-overlay .stop-item-pids.active .dot-pids { width: var(--dot-large); height: var(--dot-large); background-color: var(--highlight); box-shadow: 0 0 30px var(--highlight); border-width: 0; } #pids-overlay .stop-item-pids.active .stop-name-zh-pids { color: var(--highlight); font-size: 7vh; } #pids-overlay .stop-item-pids.active .stop-name-en-pids { color: var(--text-main); font-size: 3vh; }
     #pids-overlay .stop-item-pids.active.traveling .track-line-pids, #pids-overlay .stop-item-pids.active.arrived .track-line-pids { opacity: 1; background: repeating-linear-gradient(0deg, var(--highlight) 0px, var(--highlight) 20px, transparent 20px, transparent 40px); background-size: 100% 200%; } #pids-overlay .stop-item-pids.active.traveling .track-line-pids { animation: flowDownPids 1s linear infinite; } @keyframes flowDownPids { 0% { background-position: 0% 100%; } 100% { background-position: 0% 0%; } } #pids-overlay .stop-item-pids.active.traveling .dot-pids, #pids-overlay .stop-item-pids.active.arrived .dot-pids { animation: breathePids 2s infinite ease-in-out; } @keyframes breathePids { 0%, 100% { transform: scale(1); box-shadow: 0 0 30px var(--highlight); } 50% { transform: scale(1.1); box-shadow: 0 0 50px var(--highlight); } }
   /* ✨ 新增：日式方塊 ETA 預估面板 CSS */
-    #pids-overlay .eta-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; background-color: #444; border: 6px solid #444; border-radius: 12px; width: 90%; height: 60vh; margin: 5vh auto; box-sizing: border-box; }
+    #pids-overlay .eta-grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); gap: 6px; background-color: #444; border: 6px solid #444; border-radius: 12px; width: 90%; height: 60vh; margin: 5vh auto; box-sizing: border-box; }
     #pids-overlay .eta-cell { background-color: #111; display: flex; flex-direction: column; border-radius: 6px; overflow: hidden; box-shadow: inset 0 0 20px rgba(0,0,0,0.8); }
     #pids-overlay .eta-cell-title { background-color: #2c3e50; color: #fff; font-size: 3.5vh; font-weight: bold; padding: 10px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; border-bottom: 2px solid #555; }
     #pids-overlay .eta-cell-content { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; }
@@ -173,6 +173,10 @@
     #pids-switch-modal { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); background: rgba(30,30,30,0.95); color: white; padding: 30px; border-radius: 16px; z-index: 99999; text-align: center; border: 2px solid #0078d4; width: 80%; max-width: 450px; } .switch-title-pids { font-size: 3.5vh; font-weight: bold; margin-bottom: 15px; } .switch-desc-pids { font-size: 2.5vh; margin-bottom: 25px; color: #ccc; } .switch-countdown-text { color: #e74c3c; font-size: 5vh; font-weight: bold; margin: 0 10px; } .btn-switch-cancel, .btn-switch-confirm { flex: 1; padding: 15px; border-radius: 8px; color: white; border: none; font-size: 2.5vh; cursor: pointer; } .btn-switch-cancel { background: #555; } .btn-switch-confirm { background: #0078d4; font-weight: bold; }
 
     .tdx-form-group { text-align: left; margin-bottom: 12px; } .tdx-form-group label { font-size: 13px; font-weight: bold; color: #555; display: block; margin-bottom: 4px; } .tdx-form-group select, .tdx-form-group input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; box-sizing: border-box; } .tdx-desc { font-size: 12px; color: #888; margin-bottom: 15px; text-align: left; } .autocomplete-wrapper { position: relative; width: 100%; } .autocomplete-list { position: absolute; top: 100%; left: 0; right: 0; z-index: 99999; background: white; border: 1px solid #ccc; border-top: none; border-radius: 0 0 6px 6px; max-height: 200px; overflow-y: auto; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.15); } .autocomplete-item { padding: 10px; font-size: 14px; color: #333; cursor: pointer; border-bottom: 1px solid #eee; text-align: left; } .autocomplete-item:last-child { border-bottom: none; } .autocomplete-item:hover { background-color: #e3f2fd; color: #007bff; font-weight: bold; }
+  /* ✨ 新增：單站方塊專屬下車鈴樣式 (純平扁平化，無光暈無動畫) */
+    #pids-overlay .eta-cell-bell { position: absolute; bottom: 10px; right: 15px; font-size: 3.5vh; color: #666; display: flex; align-items: center; gap: 8px; font-weight: bold; transition: color 0.1s; }
+    #pids-overlay .eta-cell-bell svg { width: 1.2em; height: 1.2em; fill: currentColor; }
+    #pids-overlay .eta-cell-bell.active { color: #e74c3c; } /* 被預約時，圖示跟文字同時變成純紅色 */
 </style>
 </head>
 <body>
@@ -378,6 +382,9 @@
         <div id="pids-switch-modal"><div class="switch-title-pids" id="pids-switch-title">去程已結束</div><div class="switch-desc-pids">將在 <span id="pids-switch-countdown" class="switch-countdown-text">5</span> 秒後自動切換至返程...</div><div style="display:flex; gap:10px; justify-content:center;"><button class="btn-switch-cancel" onclick="cancelDirectionSwitch()">取消</button><button class="btn-switch-confirm" onclick="confirmDirectionSwitch()">立即切換</button></div></div>
         <button class="btn-close-x" onclick="stopTracking()">✕</button>
         <div class="pids-manual-overlay" id="pids-manual-controls"><button class="pids-manual-btn" onclick="pidsPrevStop()">◀ 上一站</button><button class="pids-manual-btn" onclick="pidsNextAction()">▶ 下一站/抵達</button></div>
+        
+        
+
         <div id="pids-clock" class="pids-clock">現在時間：--:--</div>
     </div>
 
@@ -504,6 +511,7 @@
                             }
                         }
                     }
+                    window.updatePidsBell(); // ✨ 接收到雲端資料時，更新下車鈴狀態
                 });
 
                 // 監聽遙控器指令
@@ -793,6 +801,12 @@
 
         window.lockSystem = function() { document.body.classList.remove('admin-mode', 'auth-mode'); currentTdxToken = null; showToast("🔒 系統已鎖定，切換為司機安全模式"); };
         window.demoteToAuthMode = function() { document.body.classList.remove('admin-mode'); showToast("👁️ 已切換為一般會員模式 (權限已降級)"); };
+      window.updatePidsBell = function() {
+            // 只要有按鈴變動，就叫預估時間面板重繪，讓對應的鈴鐺亮起來！
+            if (window.isTrackingPIDS && typeof renderPidsEtaGrid === 'function') {
+                renderPidsEtaGrid(); 
+            }
+        };
 
         window.onload = async function() { 
             document.getElementById('sys-login-id').value = localStorage.getItem('gps_tdx_id') || ''; 
@@ -1110,6 +1124,9 @@
                 }
             }
             if (window._requestedStops) window._requestedStops.clear();
+            
+            // ✨ 重啟或換線時，強制熄滅畫面上的下車鈴
+            if (window.updatePidsBell) window.updatePidsBell(); 
         }
 
         window.autoSetCheckpoints = function() {
@@ -2617,7 +2634,6 @@
                 }
             }
 
-            // 🌟 拿出被保護好的兩個抽屜
             let outS2S = window.projectData.outbound.s2s || {};
             let inS2S = window.projectData.inbound.s2s || {};
 
@@ -2630,7 +2646,6 @@
                 if (isPidsValid(window.stops[i])) { prevStop = window.stops[i]; break; }
             }
 
-            // 🌟 雙抽屜通吃 + 模糊去括號查表法
             const getS2STime = (nameA, nameB) => {
                 if (!nameA || !nameB) return null;
                 let cleanA = nameA.replace(/\(.*\)|（.*）|\s/g, '');
@@ -2668,7 +2683,6 @@
                 }
                 let endIndex = item.index;
 
-                // 🌟 貪婪大跳躍演算法
                 if (startIndex !== -1 && startIndex < endIndex) {
                     let curr = startIndex;
                     while (curr < endIndex) {
@@ -2729,15 +2743,29 @@
                     cellClass = "eta-cell arriving";
                 }
 
+                // ✨ 核心邏輯：判斷這站有沒有人按鈴！
+                let isRequested = window._requestedStops && (window._requestedStops.has(currentTarget.nameZH) || window._requestedStops.has(currentTarget.nameZH.trim()));
+                
+                // 改用專業的 SVG 向量圖示，完美繼承 CSS 的純色 (未按時灰色，按下時紅色)
+                let svgBell = `<svg viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>`;
+                let bellHtml = `<div class="eta-cell-bell ${isRequested ? 'active' : ''}">${svgBell}預約 </div>`;
+
                 container.innerHTML += `
-                    <div class="${cellClass}">
+                    <div class="${cellClass}" style="position: relative;">
                         <div class="eta-cell-title">${currentTarget.nameZH}</div>
                         <div class="eta-cell-content">
                             ${displayContent}
                         </div>
+                        ${bellHtml}
                     </div>
                 `;
             });
+
+            // ✨ 補齊不足 6 站的空白方塊
+            let emptyCells = 6 - futureStops.length;
+            for (let i = 0; i < emptyCells; i++) {
+                container.innerHTML += `<div class="eta-cell" style="background-color: transparent; box-shadow: none; border: none;"></div>`;
+            }
         }
 
         window.updatePidsDisplay = function() { 
