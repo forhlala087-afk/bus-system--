@@ -74,24 +74,31 @@
                 currentUser.uid = profile.userId;
                 currentUser.name = profile.displayName;
 
-                // 🛡️ 防禦 1：網址解析與「過河拆橋」
+                // ==========================================
+                // 🛡️ 防禦 1：網址解析與嚴格失效判定
+                // ==========================================
                 const urlParams = new URLSearchParams(window.location.search);
                 let busParam = urlParams.get('bus');
                 isAdminMode = urlParams.get('admin') === 'true';
 
-                // 洗掉歷史紀錄裡的 ?bus= 參數
+                let lockedStop = localStorage.getItem('my_locked_stop');
+                let activeBus = localStorage.getItem('my_active_bus_id');
+
+                // 嚴格判定邏輯：如果有參數就用參數；如果沒參數，只有在「已預約」狀態下才允許進入
+                if (busParam) {
+                    currentBusId = busParam;
+                } else if (lockedStop && activeBus) {
+                    currentBusId = activeBus; 
+                } else {
+                    // 沒有參數，也沒預約 ➔ 徹底失效！
+                    showOverlay("🚫 連結失效", "請重新掃描車內 QR Code。<br><br><span style='font-size:14px;color:#888;'>(為保護系統，離開公車後連結將自動失效)</span>");
+                    return;
+                }
+
+                // 過河拆橋：把網址上的 ?bus= 參數洗掉
                 if (window.history && window.history.replaceState && busParam) {
                     const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
                     window.history.replaceState(null, document.title, cleanUrl);
-                }
-
-                // 判定目前車號 (優先讀取當前網址參數，若無則讀取本機未完成的訂單)
-                currentBusId = busParam || localStorage.getItem('my_active_bus_id');
-
-                // 🚨 如果完全沒有車號 (直接開網頁，且身上沒訂單)，觸發失效畫面
-                if (!currentBusId) {
-                    showOverlay("🚫 連結失效", "請重新掃描車內 QR Code。<br><br><span style='font-size:14px;color:#888;'>(為保護系統，離開公車後連結將自動失效)</span>");
-                    return;
                 }
 
                 // 💀 雲端限制檢查
@@ -116,9 +123,8 @@
                 document.getElementById('bus-title').innerText = `目前車號：${currentBusId} (乘客：${currentUser.name})`;
                 
                 // 恢復鎖定畫面 (如果重新整理網頁時，身上還有未完成的訂單)
-                const lockedStop = localStorage.getItem('my_locked_stop');
                 if (lockedStop) {
-                    localStorage.removeItem('is_changing'); // 防止重新整理卡在修改狀態
+                    localStorage.removeItem('is_changing'); // 確保不會卡在「修改中」的畫面
                     showActiveLockScreen(lockedStop);
                 }
 
@@ -158,13 +164,12 @@
                 
                 if (myLockedStop && myActiveBus === currentBusId) {
                     let isArrivedOrPassed = false;
-                    // 判斷邏輯：現在到了這站，或者未來跟對向的站牌清單裡「已經沒有這站了」
                     if (state.currentStop === myLockedStop || (!state.upcomingStops?.includes(myLockedStop) && !state.oppositeStops?.includes(myLockedStop))) {
                         isArrivedOrPassed = true;
                     }
 
                     if (isArrivedOrPassed) {
-                        // 徹底解除所有單趟鎖定與修改紀錄
+                        // 抵達預約站點，清空本機的所有訂單與修改紀錄
                         localStorage.removeItem('my_locked_stop');
                         localStorage.removeItem('my_active_bus_id');
                         localStorage.removeItem('my_change_used');
@@ -220,8 +225,9 @@
         async function handleRequest(stopName) {
             const isChanging = localStorage.getItem('is_changing') === 'true';
             const changeUsed = localStorage.getItem('my_change_used') === 'true';
+            const oldStop = localStorage.getItem('my_locked_stop'); // 抓取原本預約的舊站點
 
-            // 🛡️ 程式碼底層雙重鎖定：如果他已經修改過，絕對不允許再發送任何訊號
+            // 雙重鎖定防護
             if (changeUsed && !isChanging) {
                 alert("🚫 異常操作：本趟車程已使用過更改機會，無法再次預約！");
                 return;
@@ -234,9 +240,15 @@
             }
 
             try {
-                // 送出訊號給公車
+                // 🛑 核心修復：把舊站點的 Firebase 紀錄刪掉 (洗掉燈號)
+                if (isChanging && oldStop && oldStop !== stopName) {
+                    await set(ref(db, `buses/${currentBusId}/requested_stops/${oldStop}`), null);
+                }
+
+                // 送出新站點的訊號給公車
                 await set(ref(db, `buses/${currentBusId}/requested_stops/${stopName}`), true);
                 
+                // 次數計算
                 if (!isAdminMode && !isChanging) {
                     const globalCountRef = ref(db, `usage_stats/${todayStr}/${currentUser.uid}/global_count`);
                     const busCountRef = ref(db, `usage_stats/${todayStr}/${currentUser.uid}/buses/${currentBusId}/daily_count`);
@@ -271,7 +283,6 @@
             if (!changeUsed) {
                 html += `<br><a class="change-link" onclick="triggerChange()">🔄 修改預約 (剩餘 1 次機會)</a>`;
             } else {
-                // 修改過一次後，按鈕消失，顯示紅色警告
                 html += `<br><div class="change-warning">⚠️ 已無更改機會，請留意下車站點</div>`;
             }
             showOverlay("✅ 預約已送出", html);
