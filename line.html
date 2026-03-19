@@ -277,12 +277,13 @@
             }
 
             try {
-                // 🛑 Firebase 橡皮擦：把舊的燈號刪除
+                // 🛑 Firebase 橡皮擦：只刪除「自己」的預約紀錄，不影響其他人
                 if (isChanging && oldStop && oldStop !== stopName) {
-                    await set(ref(db, `buses/${currentBusId}/requested_stops/${oldStop}`), null);
+                    await set(ref(db, `buses/${currentBusId}/requested_stops/${oldStop}/${currentUser.uid}`), null);
                 }
 
-                await set(ref(db, `buses/${currentBusId}/requested_stops/${stopName}`), true);
+                // ✨ 將自己的 UID 存入該站點 (這樣主機才知道要發 LINE 給誰)
+                await set(ref(db, `buses/${currentBusId}/requested_stops/${stopName}/${currentUser.uid}`), true);
                 
                 if (!isAdminMode && !isChanging) {
                     const globalCountRef = ref(db, `usage_stats/${todayStr}/${currentUser.uid}/global_count`);
