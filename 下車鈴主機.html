@@ -292,7 +292,7 @@
                 <label>🏙️ 選擇所屬系統</label>
                 <select id="tdx-city" onchange="document.getElementById('tdx-route-name').value=''; document.getElementById('tdx-autocomplete-list').style.display='none';">
                     <option value="Taipei">台北市 (Taipei)</option><option value="NewTaipei">新北市 (NewTaipei)</option>
-                    <option value="Taoyuan">桃園市 (Taoyuan)</option><option value="Ta台中">台中市 (Taichung)</option>
+                    <option value="Taoyuan">桃園市 (Taoyuan)</option><option value="Taichung">台中市 (Taichung)</option>
                     <option value="Tainan">台南市 (Tainan)</option><option value="Kaohsiung">高雄市 (Kaohsiung)</option>
                     <option value="Keelung">基隆市 (Keelung)</option><option value="Hsinchu">新竹市 (Hsinchu)</option>
                     <option value="HsinchuCounty">新竹縣 (HsinchuCounty)</option><option value="MiaoliCounty">苗栗縣 (MiaoliCounty)</option>
@@ -1314,7 +1314,10 @@
                     `https://tdx.transportdata.tw/api/basic/v2/Bus/S2STravelTime/InterCity/${routeIdStr}?%24top=5000&%24format=JSON` : 
                     `https://tdx.transportdata.tw/api/basic/v2/Bus/S2STravelTime/City/${city}/${routeIdStr}?%24top=5000&%24format=JSON`;
                 const s2sResponse = await fetch(s2sUrl, { headers: { 'Authorization': `Bearer ${token}` } });
-                const s2sData = s2sResponse.ok ? await s2sResponse.json() : [];
+const s2sData = s2sResponse.ok ? await s2sResponse.json() : [];
+
+// 🛑 在這裡加一行照妖鏡：
+console.log("TDX 給的 S2S 原始資料：", s2sData);
 
                 // 🌟 1. 先把站牌名單建立起來，當作後續的「篩子」
                 let targetData = tdxData.filter(r => r.SubRouteName && r.SubRouteName.Zh_tw === rNameInput);
