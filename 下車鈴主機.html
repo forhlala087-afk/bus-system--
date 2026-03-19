@@ -498,20 +498,29 @@
                 
                 /* ... (這裡可能會有你原本寫的 window.unsubCmd = fbOnValueRef(...) 等等) ... */
 
-                // 👇 2. 新增：掛上「監聽乘客下車鈴」的耳朵 (加在各種 unsub 宣告的附近即可)
+                // 👇 2. 恢復原本的下車鈴耳朵 (確保遙控器跟面板正常亮燈)
                 window.unsubReqStops = fbOnValueRef(fbRef(fbDb, 'buses/' + busId + '/requested_stops'), (snap) => {
                     if (!window._requestedStops) window._requestedStops = new Set();
-                    window._requestedStops.clear(); // 每次有變動，先清空記憶體
-                    
+                    window._requestedStops.clear(); 
                     if(snap.exists()) {
                         const data = snap.val();
                         for(let stopName in data) {
-                            if(data[stopName] === true) {
-                                window._requestedStops.add(stopName); // 把乘客點的站牌記在腦海裡
-                            }
+                            if(data[stopName] === true) window._requestedStops.add(stopName); 
                         }
                     }
-                    window.updatePidsBell(); // ✨ 接收到雲端資料時，更新下車鈴狀態
+                    if (window.updatePidsBell) window.updatePidsBell(); 
+                });
+
+                // 👇 3. 新增專屬的「UID 記憶耳朵」給 LINE 推播用
+                window._stopUids = {};
+                window.unsubUids = fbOnValueRef(fbRef(fbDb, 'buses/' + busId + '/stop_uids'), (snap) => {
+                    window._stopUids = {};
+                    if(snap.exists()) {
+                        const data = snap.val();
+                        for(let stopName in data) {
+                            window._stopUids[stopName] = Object.keys(data[stopName]); 
+                        }
+                    }
                 });
 
                 // 監聽遙控器指令
@@ -2534,10 +2543,30 @@ console.log("TDX 給的 S2S 原始資料：", s2sData);
                 window.reportFMS(eventMsg, true);
 
                 // 🌟 這裡就是你要的：只要是 mode === 'next' (離站跳下一站)，就立即檢查下車鈴
-                // 🌟 離站跳下一站時，觸發 10 秒影片大秀
+                // 🌟 離站跳下一站時，觸發 10 秒影片大秀與 LINE 推播！
                 if (mode === 'next' && window._requestedStops && (window._requestedStops.has(s.nameZH) || window._requestedStops.has(s.nameZH.trim()))) {
                     window.playStopBellShow(s.nameZH); 
-                    // 💡 注意：我們不在這裡清除雲端紀錄了！要把紀錄留著讓遙控器一路亮燈！
+                    
+                    // ✨ 抓出這站所有的 UID，發送給 Google Apps Script！
+                    let targetName = window._requestedStops.has(s.nameZH) ? s.nameZH : s.nameZH.trim();
+                    let uidsToNotify = window._stopUids[targetName] || [];
+                    
+                    if (uidsToNotify.length > 0) {
+                        console.log(`準備發送推播！站名: ${s.nameZH}, UID名單:`, uidsToNotify); // 竊聽器 1
+                        
+                        fetch("https://script.google.com/macros/s/AKfycbyDPkahq5Ec8x71KoVsnFZcLxcEE3eol71lj_6ewmDt9DzReJJUEvNrFB2JZPt4qnb3sQ/exec", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "text/plain;charset=utf-8",
+                            },
+                            body: JSON.stringify({ uids: uidsToNotify, stopName: s.nameZH })
+                        })
+                        .then(res => res.text())
+                        .then(text => console.log("☁️ 雲端大腦回應:", text)) // 竊聽器 2
+                        .catch(e => console.log("推播發送失敗", e));
+                    } else {
+                        console.log(`⚠️ 沒發送推播，因為 ${s.nameZH} 的 UID 名單是空的！`); // 竊聽器 3
+                    }
                 }
 
                 const bMode = document.getElementById('pids-broadcast-mode') ? document.getElementById('pids-broadcast-mode').value : 'both';
@@ -2560,7 +2589,17 @@ console.log("TDX 給的 S2S 原始資料：", s2sData);
 
                 const addLangToQueue = (lang) => {
                     let url = null, ttsText = null, ttsLang = 'zh-TW';
-                    if (lang === 'zh') { url = findPidsAudio('zh', s.nameZH); ttsText = s.nameZH; } else if (lang === 'en') { url = findPidsAudio('en', s.nameZH); ttsText = s.nameEN; ttsLang = 'en-US'; }
+                    if (lang === 'zh') { 
+                        url = findPidsAudio('zh', s.nameZH); ttsText = s.nameZH; 
+                    } else if (lang === 'en') { 
+                        url = findPidsAudio('en', s.nameZH); ttsText = s.nameEN; ttsLang = 'en-US'; 
+                    } else if (lang === 'tw') {
+                        url = findPidsAudio('tw', s.nameZH); ttsText = s.nameZH; // 找不到台語音檔時，暫用中文 TTS 頂替
+                    } else if (lang === 'hk') {
+                        url = findPidsAudio('hk', s.nameZH); ttsText = s.nameZH; // 找不到客語音檔時，暫用中文 TTS 頂替
+                    } else if (lang === 'yue') {
+                        url = findPidsAudio('yue', s.nameZH); ttsText = s.nameZH; ttsLang = 'zh-HK'; // 粵語用香港 TTS
+                    }
                     if (url) pidsPlayQueue.push({ type: 'audio', src: url }); else if (ttsText) pidsPlayQueue.push({ type: 'tts', text: ttsText, lang: ttsLang });
                 };
 
@@ -2893,6 +2932,7 @@ console.log("TDX 給的 S2S 原始資料：", s2sData);
                                     // 2. 清除 Firebase 讓遙控器熄燈
                                     if (typeof fbSetRef === 'function' && typeof fbRef === 'function') {
                                         fbSetRef(fbRef(fbDb, `buses/${window._currentBusId}/requested_stops/${s.nameZH}`), null);
+                                        fbSetRef(fbRef(fbDb, `buses/${window._currentBusId}/stop_uids/${s.nameZH}`), null); // ✨ 補上這行
                                     }
                                     
                                     window._stopSlowStartTime = 0; // 任務完成，重置計時器
