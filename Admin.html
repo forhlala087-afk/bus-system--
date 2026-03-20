@@ -188,7 +188,11 @@
                 </select>
             </div>
             
-            <button class="btn" style="background:#8e44ad;" onclick="saveGlobalSettings()">💾 強制覆蓋全車隊設定</button>
+           <div class="setting-row">
+                <label>專屬下車鈴動畫 (R2 網址)：</label>
+                <input type="text" id="set-bell-video" class="input-field" style="width: 65%; margin: 0;" placeholder="https://.../bell.mp4">
+            </div> 
+          <button class="btn" style="background:#8e44ad;" onclick="saveGlobalSettings()">💾 強制覆蓋全車隊設定</button>
         </div>
 
         <div class="card" style="border-top-color: #2980b9;">
@@ -354,7 +358,20 @@
             }
         });
 
-        // 讀取雲端輪播網址清單
+        // ✨ 讀取雲端全車隊廣播與下車鈴設定
+        onValue(ref(db, `stations/${sid}/settings`), (snap) => {
+            if(snap.exists()) {
+                const s = snap.val();
+                if(s.l1) document.getElementById('set-l1').value = s.l1;
+                if(s.l2) document.getElementById('set-l2').value = s.l2;
+                if(s.l3) document.getElementById('set-l3').value = s.l3;
+                if(s.l4) document.getElementById('set-l4').value = s.l4;
+                if(s.format) document.getElementById('set-format').value = s.format;
+                if(s.mode) document.getElementById('set-mode').value = s.mode;
+                if(s.bellVideo) document.getElementById('set-bell-video').value = s.bellVideo; // ✨ 讓輸入框自動填入雲端記住的網址
+            }
+        });
+      // 讀取雲端輪播網址清單
         onValue(ref(db, `stations/${sid}/playlist_config`), (snap) => {
             if(snap.exists()) {
                 const cfg = snap.val();
@@ -743,20 +760,12 @@
             l3: document.getElementById('set-l3').value,
             l4: document.getElementById('set-l4').value,
             format: document.getElementById('set-format').value,
-            mode: document.getElementById('set-mode').value
+            mode: document.getElementById('set-mode').value,
+            bellVideo: document.getElementById('set-bell-video').value.trim() // ✨ 補上這行：把下車鈴網址一起打包！
         };
         await set(ref(db, `stations/${currentStation}/settings`), settings);
         await set(ref(db, `stations/${currentStation}/force_update`), Date.now());
-        showToast("✅ 全車隊設定已強制更新！");
-    };
-
-    window.saveAudioConfig = async function() {
-        const url = document.getElementById('set-gh-url').value.trim();
-        const token = document.getElementById('set-gh-token').value.trim();
-        if (!url || !token) { alert("請填寫完整連結與金鑰！"); return; }
-        
-        await set(ref(db, `stations/${currentStation}/audio_config`), { url: url, token: token });
-        showToast("✅ 語音包來源已更新，車機連線時將自動下載！");
+        showToast("✅ 全車隊設定與下車鈴動畫已強制更新！");
     };
     
     window.savePlaylistConfig = async function() {
