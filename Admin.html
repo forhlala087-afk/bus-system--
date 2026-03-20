@@ -714,15 +714,28 @@
     window.addBusToStation = async function() {
         const busId = document.getElementById('new-bus-id').value.trim();
         if(!busId) return;
+
+        // 🌟 1. 先去總戶口名簿查，這台車是不是別人的？
+        const ownerSnap = await get(ref(db, `buses/${busId}/owner`));
+        if (ownerSnap.exists() && ownerSnap.val() !== currentStation) {
+            alert(`⚠️ 無法新增！車號 ${busId} 目前隸屬於 [${ownerSnap.val()}]，請先請該站解除綁定。`);
+            return;
+        }
+
+        // 🌟 2. 寫入總戶口名簿 (宣示主權) + 寫入本站清單
+        await set(ref(db, `buses/${busId}/owner`), currentStation);
         await set(ref(db, `stations/${currentStation}/buses/${busId}`), true);
+        
         document.getElementById('new-bus-id').value = '';
-        showToast(`✅ 已授權車號 ${busId}`);
+        showToast(`✅ 已成功徵召並綁定車號 ${busId}`);
     };
 
     window.removeBus = async function(busId) {
-        if(confirm(`確定要取消車號 ${busId} 的權限嗎？`)) {
+        if(confirm(`確定要將車號 ${busId} 從本站解除綁定嗎？\n(解除後其他站點即可徵召此車)`)) {
+            // 🌟 3. 同時釋放站點清單與總戶口名簿
             await remove(ref(db, `stations/${currentStation}/buses/${busId}`));
-            showToast(`✅ 已移除車號 ${busId}`);
+            await remove(ref(db, `buses/${busId}/owner`)); 
+            showToast(`✅ 已解除綁定車號 ${busId}`);
         }
     };
 
