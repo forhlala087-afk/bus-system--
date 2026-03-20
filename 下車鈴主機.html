@@ -616,6 +616,14 @@
                         if(document.getElementById('pids-l4')) document.getElementById('pids-l4').value = s.l4 || 'hk';
                         if(document.getElementById('pids-arr-format')) document.getElementById('pids-arr-format').value = s.format || 'auto';
                         if(document.getElementById('pids-broadcast-mode')) document.getElementById('pids-broadcast-mode').value = s.mode || 'both';
+                        
+                        // 👇 ✨ 新增：接收後台派發的下車鈴影片網址，並自動存入主機記憶體
+                        if (s.bellVideo !== undefined) {
+                            if(document.getElementById('pids-stop-bell-video')) {
+                                document.getElementById('pids-stop-bell-video').value = s.bellVideo;
+                            }
+                            localStorage.setItem('pids_def_stop_bell_video', s.bellVideo);
+                        }
                     }
                 });
                 
@@ -2679,6 +2687,22 @@ console.log("TDX 給的 S2S 原始資料：", s2sData);
             let outS2S = window.projectData.outbound.s2s || {};
             let inS2S = window.projectData.inbound.s2s || {};
 
+            // 🌟 新增：智慧站距測速引擎 (當 TDX 沒資料時的超級備案)
+            const getSmartFallbackTime = (lat1, lon1, lat2, lon2) => {
+                let d = getDist(parseFloat(lat1), parseFloat(lon1), parseFloat(lat2), parseFloat(lon2));
+                // 1. 道路彎曲補償 (直線距離轉換為真實行駛距離)
+                let roadDist = d > 2000 ? d * 1.15 : d * 1.35;
+
+                // 2. 智慧動態車速判定 (依據站距長短，推測道路等級)
+                let speedKmh = 20; // 預設標準市區 20 km/h
+                if (roadDist >= 3000) speedKmh = 60;      // 國道 / 快速道路等級
+                else if (roadDist >= 1000) speedKmh = 35; // 郊區 / 幹道大直線等級
+                else if (roadDist < 400) speedKmh = 12;   // 密集商圈 / 狂塞車等級
+
+                // 3. 物理公式：距離 * (3.6 / 時速) = 耗費秒數
+                return roadDist * (3.6 / speedKmh);
+            };
+
             let accumulatedSeconds = 0;
             let busLat = window._lastValidLat || 0;
             let busLon = window._lastValidLon || 0;
@@ -2747,15 +2771,15 @@ console.log("TDX 給的 S2S 原始資料：", s2sData);
                             let sA = window.stops[curr];
                             let sB = window.stops[curr+1];
                             if (sA && sB && sA.lat && sA.lon && sB.lat && sB.lon) {
-                                let d = getDist(parseFloat(sA.lat), parseFloat(sA.lon), parseFloat(sB.lat), parseFloat(sB.lon));
-                                s2sTime += (d * 0.15);
+                                // 🌟 呼叫智慧引擎，算出這兩站的「完整預估時間」
+                                s2sTime += getSmartFallbackTime(sA.lat, sA.lon, sB.lat, sB.lon);
                             }
                             curr++; 
                         }
                     }
                 } else if (k === 0 && startIndex === -1) {
-                    let d = getDist(busLat, busLon, parseFloat(currentTarget.lat), parseFloat(currentTarget.lon));
-                    s2sTime = (d * 0.15);
+                    // 如果連前一站都沒有（例如起點站剛發車），也用智慧引擎推算
+                    s2sTime = getSmartFallbackTime(busLat, busLon, currentTarget.lat, currentTarget.lon);
                 }
 
                 if (k === 0) {
