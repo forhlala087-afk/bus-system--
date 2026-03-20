@@ -438,24 +438,19 @@
         window.unsubGps = null;
         window.unsubStatus = null;
 
-        window.connectHostToFirebase = async function() {
-            const busId = document.getElementById('host-bus-id').value.trim();
-            const stationId = document.getElementById('host-station-id').value.trim(); // 取得剛新增的站點代號
+        window.connectHostToFirebase = async function(autoBusId = null) {
+            // 🌟 支援從網址傳入車號，或是從輸入框抓取
+            const busId = autoBusId || document.getElementById('host-bus-id').value.trim();
             
-            // 防呆：如果沒輸入站點或車號，直接擋下
-            if(!busId || !stationId) { alert("請輸入調度站代號與車號！"); return; }
+            // 防呆：如果沒輸入車號，直接擋下
+            if(!busId) { alert("請輸入車號！"); return; }
             
             window._currentBusId = busId;
-            window._currentStationId = stationId;
-            window._useRemoteGps = document.getElementById('use-remote-gps').checked;
-            
-            // 記憶目前設定
-            localStorage.setItem('gps_saved_bus_id', busId);
-            localStorage.setItem('gps_saved_station_id', stationId);
-            localStorage.setItem('gps_saved_use_remote', window._useRemoteGps);
+            const useRemoteEl = document.getElementById('use-remote-gps');
+            window._useRemoteGps = useRemoteEl ? useRemoteEl.checked : false;
             
             const btnConnect = document.getElementById('btn-host-connect');
-            btnConnect.innerText = "連線與驗證中...";
+            if (btnConnect) btnConnect.innerText = "雲端尋根與連線中...";
 
             try {
                 if(!fbDb) {
@@ -474,16 +469,28 @@
                     fbSetRef = fbDbModule.set;
                     fbOnValueRef = fbDbModule.onValue;
                     fbRef = fbDbModule.ref;
-                    window.fbGetRef = fbDbModule.get; // ✨ 取出 get 工具來做驗證
+                    window.fbGetRef = fbDbModule.get;
                 }
 
-                // 🛡️ 門神防護：向站務後台查驗此車號是否有被授權！
-                const authSnap = await window.fbGetRef(fbRef(fbDb, `stations/${stationId}/buses/${busId}`));
-                if (!authSnap.exists()) {
-                    alert(`❌ 授權失敗：車號 ${busId} 未登錄於 [${stationId}] 調度站！\n請聯繫站務員開通權限。`);
-                    btnConnect.innerText = "啟動雲端連線";
-                    return; // 拒絕連線並中斷
+                // 🚀 終極尋根魔法：去戶口名簿查老闆是誰！
+                const ownerSnap = await window.fbGetRef(fbRef(fbDb, `buses/${busId}/owner`));
+                if (!ownerSnap.exists()) {
+                    alert(`❌ 尋根失敗：車號 ${busId} 尚未被任何調度站綁定！\n請站務員在後台新增此車號。`);
+                    if (btnConnect) btnConnect.innerText = "啟動雲端連線";
+                    return; 
                 }
+                
+                const stationId = ownerSnap.val(); // 瞬間抓到所屬站點！
+                window._currentStationId = stationId;
+                
+                // 把畫面上的輸入框偷偷填上 (維持相容性)
+                const stationInput = document.getElementById('host-station-id');
+                if(stationInput) stationInput.value = stationId;
+
+                // 記憶目前設定
+                localStorage.setItem('gps_saved_bus_id', busId);
+                localStorage.setItem('gps_saved_station_id', stationId);
+                localStorage.setItem('gps_saved_use_remote', window._useRemoteGps);
 
                 window._isHostConnected = true;
                 let lastCmdTime = 0;
@@ -831,16 +838,38 @@
             document.getElementById('gh-repo-url').value = localStorage.getItem('gps_github_url') || '';
             document.getElementById('gh-token').value = localStorage.getItem('gps_github_token') || '';
             
-            const savedBusId = localStorage.getItem('gps_saved_bus_id');
-            const savedStationId = localStorage.getItem('gps_saved_station_id');
-            if (savedStationId) document.getElementById('host-station-id').value = savedStationId;
-            
-            if (savedBusId) {
-                document.getElementById('host-bus-id').value = savedBusId;
-                document.getElementById('use-remote-gps').checked = (localStorage.getItem('gps_saved_use_remote') === 'true');
-                showToast("📡 系統啟動中，自動恢復待機模式...");
-                setTimeout(() => { window.connectHostToFirebase(); }, 800); 
+            // 🌟 1. 抓取網址參數 (例如：?bus=9527)
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlBusId = urlParams.get('bus');
+
+            if (urlBusId) {
+                // 🚀 進入 Kiosk 全自動無人機模式！
+                document.getElementById('host-bus-id').value = urlBusId;
+                window._currentBusId = urlBusId;
+                
+                // 把右上角控制列隱藏，防止司機亂點
+                const topControls = document.querySelector('.top-right-controls');
+                if(topControls) topControls.style.display = 'none';
+
+                showToast(`🚀 Kiosk 模式啟動：車號 ${urlBusId}，全自動尋找調度站...`);
+                // 延遲一秒讓 Firebase 準備好，然後直接丟入自動連線！
+                setTimeout(() => { window.connectHostToFirebase(urlBusId); }, 1000); 
+                
+            } else {
+                // 👴 舊的相容模式 (手動輸入)
+                const savedBusId = localStorage.getItem('gps_saved_bus_id');
+                const savedStationId = localStorage.getItem('gps_saved_station_id');
+                if (savedStationId) document.getElementById('host-station-id').value = savedStationId;
+                
+                if (savedBusId) {
+                    document.getElementById('host-bus-id').value = savedBusId;
+                    document.getElementById('use-remote-gps').checked = (localStorage.getItem('gps_saved_use_remote') === 'true');
+                    showToast("📡 系統啟動中，自動恢復待機模式...");
+                    setTimeout(() => { window.connectHostToFirebase(); }, 800); 
+                }
             }
+
+            // ...(下面保留你原本的 loadRoute("temp",...) 等等)...
 
             try {
                 loadRoute("temp", 'outbound', true); 
