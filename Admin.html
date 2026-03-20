@@ -400,7 +400,51 @@
             // 📡 監聽本站所有車輛的 GPS 與即時動態
             window._isAutoFollowing = false; 
             window._fleetHistoryCache = {};  
-            window._currentFleetData = {};   
+            window._currentFleetData = {};
+          
+          // ✨ 1. 先去資料庫把「今天的歷史紀錄」全部載入
+            const d = new Date();
+            const dateStr = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, '0') + "-" + String(d.getDate()).padStart(2, '0');
+            const logTable = document.getElementById('fleet-history-log');
+            logTable.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:10px; color:#999;">載入歷史紀錄中...</td></tr>';
+            
+            get(ref(db, `station_logs/${sid}/${dateStr}`)).then(histSnap => {
+                if (histSnap.exists()) {
+                    let allLogs = [];
+                    const data = histSnap.val();
+                    for (let bId in data) {
+                        for (let ts in data[bId]) {
+                            allLogs.push({ busId: bId, ...data[bId][ts] });
+                        }
+                    }
+                    allLogs.sort((a, b) => b.timestamp - a.timestamp); // 最新時間排最上面
+                    
+                    logTable.innerHTML = '';
+                    // 為了效能，最多顯示前 300 筆紀錄
+                    allLogs.slice(0, 300).forEach(log => {
+                        let isEvent = log.event && (log.event.includes('🟢') || log.event.includes('▶️') || log.event.includes('狀態切換'));
+                        let eventStyle = isEvent ? "font-weight:bold; color:#27ae60;" : "color:#555;";
+                        
+                        const tr = document.createElement('tr');
+                        tr.className = `log-row bus-log-${log.busId}`;
+                        tr.style.borderBottom = "1px solid #eee";
+                        tr.innerHTML = `
+                            <td style="padding: 6px; color:#666;">${new Date(log.timestamp).toLocaleTimeString()}</td>
+                            <td style="padding: 6px; font-weight:bold; color:#0984e3;">${log.busId}</td>
+                            <td style="padding: 6px; ${eventStyle}">${log.event || '行駛中'} <br><span style="font-size:11px; color:#aaa;">(${log.lat ? log.lat.toFixed(4) : '--'}, ${log.lon ? log.lon.toFixed(4) : '--'})</span></td>
+                            <td style="padding: 6px; color:${log.speed > 0 ? '#e67e22' : '#999'};">${log.speed || 0} km/h</td>
+                        `;
+                        logTable.appendChild(tr);
+
+                        // 初始化快取，避免稍後連線時發生重複印出的現象
+                        if (!window._fleetHistoryCache[log.busId] || window._fleetHistoryCache[log.busId].timestamp < log.timestamp) {
+                            window._fleetHistoryCache[log.busId] = log;
+                        }
+                    });
+                } else {
+                    logTable.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:10px; color:#999;">今日尚無歷史紀錄</td></tr>';
+                }
+            });
 
             // 🌟 核心渲染邏輯 (背景定時與資料更新時呼叫)
             function renderFleetDashboard() {
@@ -481,6 +525,12 @@
                     let lastData = window._fleetHistoryCache[busId];
                     if (!lastData || lastData.timestamp !== data.timestamp) {
                         const logTable = document.getElementById('fleet-history-log');
+                        
+                        // ✨ 補上清除「無歷史紀錄」字樣的防呆
+                        if (logTable.innerHTML.includes('今日尚無歷史紀錄') || logTable.innerHTML.includes('載入歷史紀錄中')) {
+                            logTable.innerHTML = '';
+                        }
+
                         const tr = document.createElement('tr');
                         tr.className = `log-row bus-log-${busId}`; 
                         tr.style.borderBottom = "1px solid #eee";
