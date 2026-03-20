@@ -787,7 +787,8 @@
                 finalEventMessage = "待命";
             }
             
-            fbSetRef(fbRef(fbDb, `stations/${window._currentStationId}/fleet/${window._currentBusId}`), {
+            // 🌟 統一把資料打包
+            const logData = {
                 lat: window._lastValidLat,
                 lon: window._lastValidLon,
                 heading: window._currentHeading || 0,
@@ -798,7 +799,17 @@
                 event: finalEventMessage,
                 isTracking: (window.isTrackingPIDS || window.isTrackingVideo),
                 timestamp: now
-            });
+            };
+
+            // 📅 取得今天的日期 (格式：YYYY-MM-DD)
+            const d = new Date();
+            const dateStr = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, '0') + "-" + String(d.getDate()).padStart(2, '0');
+
+            // 1. 刷新即時地圖 (給戰情室看最新狀態)
+            fbSetRef(fbRef(fbDb, `stations/${window._currentStationId}/fleet/${window._currentBusId}`), logData);
+            
+            // 2. ✨ 將紀錄丟進「每日歷史檔案櫃」永久保存
+            fbSetRef(fbRef(fbDb, `station_logs/${window._currentStationId}/${dateStr}/${window._currentBusId}/${now}`), logData);
         };
 
         // ==========================================
