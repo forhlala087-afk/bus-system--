@@ -603,6 +603,35 @@
                         }
                     }, 16000); 
                 });
+              // ==========================================
+                // 🔔 【新功能】監聽 ESP32 實體下車鈴訊號
+                // ==========================================
+                if (window.unsubHardwareBell) window.unsubHardwareBell(); // 清理舊耳朵
+
+                window.unsubHardwareBell = fbOnValueRef(fbRef(fbDb, `buses/${busId}/hardware_bell`), (snap) => {
+    if(snap.exists()) {
+        const nextStop = window.stops[window.pidsCurrentIndex];
+        const stopName = nextStop ? nextStop.nameZH : "下車站";
+
+        // 🛡️ 核心邏輯：如果預約清單裡已經有這站了，就代表燈已經亮了，直接結束不重複播放
+        if (window._requestedStops && window._requestedStops.has(stopName)) {
+            console.log(`[智慧過濾] ${stopName} 已經有人按過鈴了，忽略重複訊號。`);
+            return; 
+        }
+
+        console.log(`🚨 偵測到實體首按！觸發 ${stopName} 下車大秀`);
+        
+        // 觸發 10 秒影片大秀
+        if (typeof window.playStopBellShow === 'function') {
+            window.playStopBellShow(stopName);
+        }
+
+        // 正式加入清單 (這會連動看板亮紅鈴鐺)
+        if (!window._requestedStops) window._requestedStops = new Set();
+        window._requestedStops.add(stopName);
+        if (window.updatePidsBell) window.updatePidsBell();
+    }
+});
 
                 // ✨ 魔法 1：監聽站務員上傳的「超級路線大補包」自動覆蓋主機 ✨
                 fbOnValueRef(fbRef(fbDb, `stations/${stationId}/routes`), (snap) => {
