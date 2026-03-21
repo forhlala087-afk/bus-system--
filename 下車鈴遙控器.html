@@ -344,6 +344,24 @@
 
                 unsubscribeSettings = onValue(ref(window.fbDb, `stations/${currentStationId}/settings`), (snap) => {
                     if(snap.exists()) globalStationSettings = snap.val();
+                  // 3. 【新增】監聽 ESP32 實體下車鈴 (讓遙控器也能亮紫紅燈)
+            const hwBellRef = ref(window.fbDb, `buses/${currentBusId}/hardware_bell`);
+            onValue(hwBellRef, (snap) => {
+                if (snap.exists()) {
+                    console.log("🚨 收到實體按鈕訊號，遙控器發光！");
+                    const panel = document.getElementById('status-panel');
+                    if (panel) {
+                        panel.classList.add('stop-requested');
+                        // 觸發手機震動 (如果是 Android 手機)
+                        try { if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]); } catch(e){}
+                        
+                        // 10 秒後自動熄滅 (或是隨主機狀態更新)
+                        setTimeout(() => {
+                            // 這裡不用強制移除，因為上面的第 2 點監聽會根據主機狀態自動決定要不要移除 class
+                        }, 10000);
+                    }
+                }
+            });
                 });
 
                 unsubscribeAudioConfig = onValue(ref(window.fbDb, `stations/${currentStationId}/audio_config`), (snap) => {
